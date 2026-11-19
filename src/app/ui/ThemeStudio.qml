@@ -200,11 +200,12 @@ Item {
                     }
                 }
 
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
-                    Button { text: "Choose background image"; onClicked: previewImageDialog.open() }
-                    Button { text: "Clear image"; enabled: themeController.glassPreviewImage.length > 0; onClicked: themeController.glassPreviewImage = "" }
-                    Item { Layout.fillWidth: true }
+                    columns: width >= 520 ? 2 : 1
+                    columnSpacing: 8
+                    Button { Layout.fillWidth: true; text: "Choose background image"; onClicked: previewImageDialog.open() }
+                    Button { Layout.fillWidth: true; text: "Clear image"; enabled: themeController.glassPreviewImage.length > 0; onClicked: themeController.glassPreviewImage = "" }
                 }
 
                 Rectangle {
@@ -243,11 +244,12 @@ Item {
                             x: Math.max(0, parent.width - width * 0.72)
                             y: -height * 0.55
                             color: themeController.spotlight
-                            opacity: themeController.glassGlowEnabled ? 0.85 : 0
+                            opacity: themeController.useHeavyEffects && themeController.glassGlowEnabled ? 0.85 : 0
                         }
                         MultiEffect {
                             anchors.fill: spotlightSource
                             source: spotlightSource
+                            visible: themeController.useHeavyEffects
                             blurEnabled: true
                             blur: 1
                             blurMax: 64
@@ -259,14 +261,16 @@ Item {
                         anchors.fill: glassPanel
                         sourceItem: previewBackgroundLayer
                         sourceRect: Qt.rect(glassPanel.x, glassPanel.y, glassPanel.width, glassPanel.height)
-                        textureSize: Qt.size(Math.max(1, glassPanel.width * 1.5), Math.max(1, glassPanel.height * 1.5))
-                        live: true
+                        textureSize: Qt.size(Math.max(1, glassPanel.width * (themeController.useHeavyEffects ? 1.5 : 1)), Math.max(1, glassPanel.height * (themeController.useHeavyEffects ? 1.5 : 1)))
+                        live: themeController.useHeavyEffects
+                        visible: themeController.useHeavyEffects
                         hideSource: false
                     }
                     MultiEffect {
                         z: 1
                         anchors.fill: glassPanel
                         source: glassBackdropSource
+                        visible: themeController.useHeavyEffects
                         blurEnabled: true
                         blur: Math.max(0, Math.min(1, themeController.glassBlur / 40))
                         blurMax: 40
@@ -282,7 +286,7 @@ Item {
                         color: themeController.glassSurface
                         border.color: themeController.glassBorder
                         border.width: 1
-                        layer.enabled: true
+                        layer.enabled: themeController.useHeavyEffects
                         layer.effect: MultiEffect {
                             shadowEnabled: true
                             shadowColor: Qt.rgba(0, 0, 0, themeController.glassShadow / 100)

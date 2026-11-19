@@ -94,20 +94,30 @@ QtObject {
 
     readonly property color accent: Qt.color(brand)
     readonly property color window: glass ? Qt.color(glassPreviewBackground)
-        : (dark ? "#171B20" : (clay ? "#F7EEE8" : Qt.color(backgroundAnchor)))
+        : (dark ? (aurora ? "#101421" : "#171B20")
+            : (aurora ? "#F3F1FA" : (clay ? "#F7EEE8" : Qt.color(backgroundAnchor))))
     readonly property color surface: glass ? glassSurface
-        : (clay ? "#F4E8DF" : (dark ? "#22282F" : "#FFFFFF"))
-    readonly property color surfaceAlt: dark ? "#2B333C" : Qt.lighter(Qt.color(backgroundAnchor), 1.025)
+        : (dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
+            : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF")))
+    readonly property color surfaceAlt: dark ? (aurora ? "#252B40" : "#2B333C")
+        : (aurora ? "#EFECF7" : Qt.lighter(Qt.color(backgroundAnchor), 1.025))
     readonly property color sidebar: glass ? glassSurface
-        : (dark ? "#202830" : Qt.darker(Qt.color(backgroundAnchor), 1.025))
+        : (dark ? (aurora ? "#171D2C" : "#202830")
+            : (aurora ? "#EAE7F5" : Qt.darker(Qt.color(backgroundAnchor), 1.025)))
     readonly property color panel: glass ? glassSurface
-        : (clay ? "#F4E8DF" : (dark ? "#22282F" : "#FFFFFF"))
-    readonly property color panelInset: dark ? "#202830" : Qt.lighter(Qt.color(backgroundAnchor), 1.015)
+        : (dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
+            : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF")))
+    readonly property color panelInset: dark ? (aurora ? "#171D2C" : "#202830")
+        : (aurora ? "#EFECF7" : Qt.lighter(Qt.color(backgroundAnchor), 1.015))
     readonly property color text: dark ? "#EDF1F5" : "#202A34"
     readonly property color muted: dark ? "#A5B0BB" : "#65717D"
     readonly property color border: glass ? glassBorder
-        : (brutalist ? Qt.color(brand) : (dark ? "#3A4652" : Qt.color(borderAnchor)))
-    readonly property color selected: dark ? Qt.darker(accent, 2.2) : Qt.lighter(accent, 1.65)
+        : (brutalist ? Qt.color(brand)
+            : (dark ? (aurora ? "#3B4764" : "#3A4652")
+                : (aurora ? "#D8D2E8" : Qt.color(borderAnchor))))
+    readonly property color selected: dark
+        ? (aurora ? "#354365" : Qt.darker(accent, 2.2))
+        : (aurora ? "#E4DFF1" : Qt.lighter(accent, 1.65))
     readonly property color status: dark ? "#9AA7B3" : "#687582"
     readonly property color success: dark ? "#86D6A2" : "#287A49"
     readonly property color warning: dark ? "#F2C36B" : "#986515"
@@ -124,7 +134,7 @@ QtObject {
     readonly property var backgroundScale: makeScale(backgroundAnchor)
     readonly property var borderScale: makeScale(borderAnchor)
     readonly property real brandTextContrast: contrastRatio(brand, dark ? "#FFFFFF" : "#FFFFFF")
-    readonly property bool useHeavyEffects: false
+    property bool useHeavyEffects: false
 
     function isHex(value) {
         return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value)
@@ -157,6 +167,13 @@ QtObject {
         var a = luminance(first)
         var b = luminance(second)
         return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+    }
+
+    function boundedNumber(value, fallback, minimum, maximum) {
+        var parsed = Number(value)
+        if (!isFinite(parsed))
+            return fallback
+        return Math.max(minimum, Math.min(maximum, parsed))
     }
 
     function applyPalette(item) {
@@ -259,19 +276,20 @@ QtObject {
                 backgroundAnchor = item.background
                 borderAnchor = item.border
             }
-            glassBlur = Number(item.glassBlur)
-            glassOpacity = Number(item.glassOpacity)
-            glassBorderOpacity = Number(item.glassBorderOpacity)
-            glassRadius = Number(item.glassRadius)
-            glassSaturation = Number(item.glassSaturation)
-            glassShadow = Number(item.glassShadow)
+            glassBlur = boundedNumber(item.glassBlur, 12, 0, 40)
+            glassOpacity = boundedNumber(item.glassOpacity, 0.15, 0.05, 0.85)
+            glassBorderOpacity = boundedNumber(item.glassBorderOpacity, 0.30, 0.05, 1)
+            glassRadius = boundedNumber(item.glassRadius, 16, 0, 40)
+            glassSaturation = boundedNumber(item.glassSaturation, 100, 0, 200)
+            glassShadow = boundedNumber(item.glassShadow, 20, 0, 80)
             glassGlowEnabled = Boolean(item.glassGlowEnabled)
-            glassSpotlightSize = Number(item.glassSpotlightSize)
-            glassSpotlightOpacity = Number(item.glassSpotlightOpacity)
-            glassSpotlightColor = item.glassSpotlightColor || "#FFFFFF"
-            glassBaseColor = item.glassBaseColor || "#FFFFFF"
-            glassPreviewBackground = item.glassPreviewBackground || "#6B83A6"
-            glassPreviewImage = item.glassPreviewImage || ""
+            glassSpotlightSize = boundedNumber(item.glassSpotlightSize, 300, 80, 600)
+            glassSpotlightOpacity = boundedNumber(item.glassSpotlightOpacity, 0.15, 0, 0.6)
+            glassSpotlightColor = isHex(item.glassSpotlightColor) ? item.glassSpotlightColor : "#FFFFFF"
+            glassBaseColor = isHex(item.glassBaseColor) ? item.glassBaseColor : "#FFFFFF"
+            glassPreviewBackground = isHex(item.glassPreviewBackground)
+                ? item.glassPreviewBackground : "#6B83A6"
+            glassPreviewImage = typeof item.glassPreviewImage === "string" ? item.glassPreviewImage : ""
             return true
         }
         return false

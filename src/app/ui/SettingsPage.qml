@@ -27,13 +27,14 @@ Item {
     }
 
     ScrollView {
+        id: settingsScroll
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
 
         ColumnLayout {
             x: 32
-            width: Math.max(0, parent.width - 64)
+            width: Math.max(0, settingsScroll.availableWidth - 64)
             spacing: 18
 
             Item { Layout.preferredHeight: 8 }

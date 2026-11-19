@@ -12,7 +12,10 @@ ApplicationWindow {
     title: appController.appName
     color: theme.window
 
-    ThemeController { id: theme }
+    ThemeController {
+        id: theme
+        useHeavyEffects: !window.compact && Qt.platform.os !== "android"
+    }
 
     readonly property bool compact: width < 720
     readonly property bool medium: width >= 720 && width < 1080

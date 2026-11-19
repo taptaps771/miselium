@@ -13,13 +13,14 @@ Item {
     property var hardwareRows: JSON.parse(appController.hardwareCapabilitiesJson)
 
     ScrollView {
+        id: dashboardScroll
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
 
         ColumnLayout {
             x: 32
-            width: Math.max(0, parent.width - 64)
+            width: Math.max(0, dashboardScroll.availableWidth - 64)
             spacing: 20
 
             Item { Layout.preferredHeight: 8 }
@@ -46,19 +47,23 @@ Item {
                     Layout.fillWidth: true
                     spacing: 3
                     Label {
+                        Layout.fillWidth: true
                         text: appController.appName
                         color: themeController.text
                         font.pixelSize: 25
                         font.bold: true
                     }
                     Label {
+                        Layout.fillWidth: true
                         text: "PySide6 · Qt Quick · Python · Application Foundation"
                         color: mutedColor
                         font.pixelSize: 13
+                        wrapMode: Text.WordWrap
                     }
                 }
 
                 Rectangle {
+                    visible: dashboardScroll.availableWidth >= 560
                     radius: themeController.cardRadius
                     color: themeController.panelInset
                     border.color: themeController.border

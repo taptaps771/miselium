@@ -8,6 +8,7 @@ import QtQuick.Dialogs
 Page {
     id: page
     required property var themeController
+    readonly property bool compact: width < 560
     background: Rectangle { color: themeController.window }
 
     property color panelColor: themeController.panel
@@ -76,12 +77,13 @@ Page {
     }
 
     ScrollView {
+        id: cameraScroll
         anchors.fill: parent
         clip: true
         contentWidth: availableWidth
 
         ColumnLayout {
-            width: Math.max(0, parent.width - 48)
+            width: Math.max(0, cameraScroll.availableWidth - 48)
             x: 24
             spacing: 16
 
@@ -93,8 +95,10 @@ Page {
                 Label {
                     text: "Camera & QR / Barcode Scanner"
                     color: themeController.text
-                    font.pixelSize: 24
+                    font.pixelSize: page.compact ? 20 : 24
                     font.bold: true
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
                 }
                 Label {
                     text: "Preview menggunakan Qt Multimedia. Hasil foto diproses oleh decoder ZXing-C++ di worker thread."
@@ -107,7 +111,7 @@ Page {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 360
+                Layout.preferredHeight: page.compact ? 260 : 360
                 radius: themeController.cardRadius
                 color: "#050b14"
                 border.color: borderColor
@@ -130,10 +134,13 @@ Page {
                 }
             }
 
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                columns: page.compact ? 2 : 3
+                columnSpacing: 8
+                rowSpacing: 8
                 Button {
+                    Layout.fillWidth: true
                     text: camera.active ? "Matikan kamera" : "Aktifkan kamera"
                     onClicked: {
                         if (camera.active)
@@ -143,12 +150,14 @@ Page {
                     }
                 }
                 Button {
+                    Layout.fillWidth: true
                     text: "Ambil foto & scan"
                     enabled: camera.active && imageCapture.readyForCapture && !appController.scanBusy
                     onClicked: imageCapture.captureToFile(appController.createCameraCapturePath())
                 }
-                Item { Layout.fillWidth: true }
                 Button {
+                    Layout.fillWidth: true
+                    Layout.columnSpan: page.compact ? 2 : 1
                     text: "Pilih gambar"
                     enabled: !appController.scanBusy
                     onClicked: imagePicker.open()

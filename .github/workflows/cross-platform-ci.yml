@@ -133,4 +133,4 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements/server.txt pytest pytest-asyncio httpx
       - name: Exercise M9 API and M10 services with restricted PostgreSQL role
-        run: python -m pytest -q tests/backend/test_m9_api_postgres.py clients/cross-platform/tests/backend/test_m9_tenant_lifecycle_postgres.py clients/cross-platform/tests/backend/test_m9_invitations_postgres.py clients/cross-platform/tests/backend/test_m9_membership_admin_postgres.py clients/cross-platform/tests/backend/test_m9_tenant_roles_postgres.py clients/cross-platform/tests/backend/test_m9_invitation_role_boundary_postgres.py clients/cross-platform/tests/backend/test_m10_inventory_services_postgres.py
+        run: python -m pytest -q tests/backend/test_m9_api_postgres.py tests/backend/test_m9_tenant_lifecycle_postgres.py tests/backend/test_m9_invitations_postgres.py tests/backend/test_m9_membership_admin_postgres.py tests/backend/test_m9_tenant_roles_postgres.py tests/backend/test_m9_invitation_role_boundary_postgres.py tests/backend/test_m10_inventory_services_postgres.py

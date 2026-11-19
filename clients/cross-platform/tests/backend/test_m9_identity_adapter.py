@@ -169,3 +169,46 @@ def test_password_verification_uses_global_password_identity() -> None:
     )
 
     assert identity.user_id == user_id
+
+
+
+def test_authenticated_user_context_is_transaction_local() -> None:
+    session = FakeSession([])
+    user_id = uuid4()
+
+    M9IdentityRepository(session).set_transaction_user(user_id)
+
+    sql, params = session.calls[0]
+    assert "set_config('app.user_id'" in sql
+    assert params == {"user_id": str(user_id)}
+    assert sql.rstrip().endswith("true)")
+
+
+def test_list_active_tenants_sets_user_context_and_returns_memberships() -> None:
+    user_id, tenant_a, tenant_b = uuid4(), uuid4(), uuid4()
+    membership_a, membership_b = uuid4(), uuid4()
+    session = FakeSession(
+        [],
+        [
+            {
+                "tenant_id": tenant_a,
+                "membership_id": membership_a,
+                "code": "farm-a",
+                "name": "Farm A",
+            },
+            {
+                "tenant_id": tenant_b,
+                "membership_id": membership_b,
+                "code": "farm-b",
+                "name": "Farm B",
+            },
+        ],
+    )
+
+    tenants = M9IdentityRepository(session).list_active_tenants(user_id)
+
+    assert [tenant.tenant_id for tenant in tenants] == [tenant_a, tenant_b]
+    assert [tenant.membership_id for tenant in tenants] == [membership_a, membership_b]
+    assert "tm.user_id = :user_id" in session.calls[1][0]
+    assert "tm.status = 'active'" in session.calls[1][0]
+    assert session.calls[1][1] == {"user_id": str(user_id)}

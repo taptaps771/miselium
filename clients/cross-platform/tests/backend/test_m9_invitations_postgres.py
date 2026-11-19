@@ -189,7 +189,7 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
             duplicate = await client.post(
                 f"/v1/tenants/{tenant_id}/invitations",
                 headers=inviter_headers,
-                json={"email": invitee_email, "role_code": "member"},
+                json={"email": other_email, "role_code": "member"},
             )
             assert duplicate.status_code == 201, duplicate.text
             second_token = sent[1][1]
@@ -204,7 +204,7 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
 
             revoked_accept = await client.post(
                 "/v1/invitations/accept",
-                headers=invitee_headers,
+                headers=other_headers,
                 json={"token": second_token},
             )
             assert revoked_accept.status_code == 400

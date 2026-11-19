@@ -216,7 +216,6 @@ AS $m9_invite_accept$
 DECLARE
   v_invitation tenant_invitations%ROWTYPE;
   v_membership_id uuid;
-  v_email text;
   v_existing_status text;
   v_primary_location uuid;
 BEGIN
@@ -224,18 +223,11 @@ BEGIN
     RAISE EXCEPTION 'invalid invitation token' USING ERRCODE = '22023';
   END IF;
 
-  SELECT lower(cp.normalized_value)
-    INTO v_email
-    FROM users u
-    JOIN user_contact_points cp ON cp.user_id = u.id
+  PERFORM 1 FROM users u
    WHERE u.id = p_user_id AND u.status = 'active'
-     AND cp.contact_type = 'email' AND cp.is_verified IS TRUE
-   ORDER BY cp.is_primary DESC
-   LIMIT 1
-   FOR UPDATE OF u;
-
-  IF v_email IS NULL THEN
-    RAISE EXCEPTION 'active verified global identity required' USING ERRCODE = '42501';
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'active global identity required' USING ERRCODE = '42501';
   END IF;
 
   SELECT * INTO v_invitation
@@ -244,9 +236,18 @@ BEGIN
    FOR UPDATE;
 
   IF NOT FOUND OR v_invitation.status <> 'pending'
-     OR v_invitation.expires_at <= now()
-     OR v_invitation.email_normalized <> v_email THEN
-    RAISE EXCEPTION 'invitation is invalid, expired, or belongs to another email'
+     OR v_invitation.expires_at <= now() THEN
+    RAISE EXCEPTION 'invitation is invalid or expired' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM user_contact_points cp
+     WHERE cp.user_id = p_user_id
+       AND cp.contact_type = 'email'
+       AND cp.is_verified IS TRUE
+       AND lower(cp.normalized_value) = v_invitation.email_normalized
+  ) THEN
+    RAISE EXCEPTION 'invitation email does not match a verified account email'
       USING ERRCODE = 'P0002';
   END IF;
 
@@ -292,6 +293,10 @@ BEGIN
     v_invitation.tenant_id, v_membership_id,
     v_invitation.role_id, v_invitation.invited_by
   );
+
+  DELETE FROM membership_location_scopes
+   WHERE tenant_id = v_invitation.tenant_id
+     AND membership_id = v_membership_id;
 
   SELECT id INTO v_primary_location
     FROM locations

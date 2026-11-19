@@ -143,7 +143,7 @@ Item {
                                 required property var modelData
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 126
-                                radius: 15
+                                radius: themeController.cardRadius
                                 color: page.panelColor
                                 border.color: page.selectedModuleCode === modelData.code
                                               ? page.accentColor : page.borderColor
@@ -187,7 +187,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 visible: page.selectedModuleCode !== ""
-                radius: 16
+                radius: themeController.cardRadius
                 color: themeController.panelInset
                 border.color: page.borderColor
                 implicitHeight: moduleDetail.implicitHeight + 36

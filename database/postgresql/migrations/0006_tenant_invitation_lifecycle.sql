@@ -76,6 +76,7 @@ BEGIN
     SELECT 1
       FROM tenants t
       JOIN tenant_memberships m ON m.tenant_id = t.id
+      JOIN users u ON u.id = m.user_id AND u.status = 'active'
       JOIN membership_role_assignments a
         ON a.tenant_id = m.tenant_id AND a.membership_id = m.id
       JOIN tenant_role_permissions rp
@@ -155,6 +156,8 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
       FROM tenant_memberships m
+      JOIN users u ON u.id = m.user_id AND u.status = 'active'
+      JOIN tenants t ON t.id = m.tenant_id AND t.status = 'active'
       JOIN membership_role_assignments a
         ON a.tenant_id = m.tenant_id AND a.membership_id = m.id
       JOIN tenant_role_permissions rp
@@ -203,6 +206,8 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
       FROM tenant_memberships m
+      JOIN users u ON u.id = m.user_id AND u.status = 'active'
+      JOIN tenants t ON t.id = m.tenant_id AND t.status = 'active'
       JOIN membership_role_assignments a
         ON a.tenant_id = m.tenant_id AND a.membership_id = m.id
       JOIN tenant_role_permissions rp

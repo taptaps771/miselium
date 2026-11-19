@@ -78,9 +78,9 @@ def _seed_identity(admin_url: str) -> None:
         connection.execute(
             text(
                 """
-                INSERT INTO tenants(id, code, name, status)
-                VALUES (:tenant_id, 'M9-API-TEST', 'M9 API Integration', 'active')
-                ON CONFLICT (id) DO UPDATE SET status = 'active'
+                INSERT INTO tenants(id, code, name, status, approved_at, approval_reason)
+                VALUES (:tenant_id, 'M9-API-TEST', 'M9 API Integration', 'active', now(), 'CI fixture')
+                ON CONFLICT (id) DO UPDATE SET status = 'active', approved_at = now()
                 """
             ),
             {"tenant_id": str(TENANT_ID)},

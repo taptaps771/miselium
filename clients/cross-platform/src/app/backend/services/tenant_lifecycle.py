@@ -161,6 +161,20 @@ def register_global_user(
             "expires_at": expires_at,
         },
     )
+    session.execute(
+        text(
+            """
+            INSERT INTO platform_audit_events(
+                actor_user_id, action, target_type, target_id, metadata
+            )
+            VALUES (
+                :user_id, 'global_identity.registered', 'global_user', :user_id,
+                jsonb_build_object('email', :email)
+            )
+            """
+        ),
+        {"user_id": str(user_id), "email": normalized},
+    )
     return RegistrationChallenge(
         user_id=UUID(str(user_id)),
         email=normalized,
@@ -219,6 +233,23 @@ def verify_global_email(session: Session, *, token: str) -> UUID:
             """
         ),
         {"challenge_id": challenge["id"]},
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO platform_audit_events(
+                actor_user_id, action, target_type, target_id, metadata
+            )
+            VALUES (
+                :user_id, 'global_identity.email_verified', 'global_user', :user_id,
+                jsonb_build_object('contact_point_id', :contact_id)
+            )
+            """
+        ),
+        {
+            "user_id": str(challenge["user_id"]),
+            "contact_id": str(challenge["contact_point_id"]),
+        },
     )
     return UUID(str(challenge["user_id"]))
 

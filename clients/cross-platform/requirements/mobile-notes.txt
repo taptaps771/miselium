@@ -1,0 +1,5 @@
+# Android platform dependencies are intentionally NOT installed through pip here.
+# Android packaging is handled by pyside6-android-deploy and its pinned
+# Buildozer/python-for-android toolchain. Native APIs (NFC, BiometricPrompt,
+# FCM, Storage Access Framework) will be implemented in Android bridge code.
+# See docs/ANDROID-TOOLCHAIN.md before installing SDK/NDK/JDK.

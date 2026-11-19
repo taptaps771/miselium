@@ -1,0 +1,8 @@
+# Qt for Python. Python 3.14 is supported by this release line.
+PySide6==6.12.0
+
+# Shared application dependencies
+pydantic>=2.12,<3
+pydantic-settings>=2.12,<3
+httpx>=0.27,<1
+platformdirs>=4.3,<5

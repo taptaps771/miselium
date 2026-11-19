@@ -1,0 +1,3 @@
+# Full development environment: desktop client + API backend
+-r requirements/desktop.txt
+-r requirements/server.txt

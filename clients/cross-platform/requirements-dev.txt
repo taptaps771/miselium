@@ -1,0 +1,10 @@
+-r requirements/desktop.txt
+
+# Test tools
+pytest>=9,<10
+pytest-qt>=4.4,<5
+pytest-asyncio>=0.25,<2
+
+# Static analysis and formatting
+ruff>=0.14,<1
+mypy>=1.19,<3

@@ -1,0 +1,15 @@
+# FastAPI backend
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+
+# Database
+SQLAlchemy>=2.0,<3
+alembic>=1.14,<2
+psycopg[binary]>=3.2,<4
+
+# Authentication / upload support
+PyJWT>=2.10,<3
+python-multipart>=0.0.20,<1
+
+# Pydantic EmailStr validation
+email-validator>=2.2,<3

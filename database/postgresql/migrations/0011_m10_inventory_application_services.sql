@@ -97,7 +97,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_document_single_reversal
 -- A consumption record must be derived from an already-posted batch issue.
 CREATE OR REPLACE FUNCTION guard_production_batch_consumption_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m10$
+DECLARE
+  v_document_id uuid;
 BEGIN
+  SELECT document_id INTO v_document_id
+    FROM inventory_document_lines
+   WHERE tenant_id=NEW.tenant_id AND id=NEW.inventory_document_line_id;
+  IF v_document_id IS NULL THEN
+    RAISE EXCEPTION 'Production consumption document line was not found'
+      USING ERRCODE='23514';
+  END IF;
+
+  -- Serialize all consumption inserts for a batch, including direct SQL calls.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(NEW.tenant_id::text || ':production_batch:' || NEW.batch_id::text, 0)
+  );
+
+  IF EXISTS (
+    SELECT 1
+      FROM production_batch_consumptions AS pc
+      JOIN inventory_document_lines AS prior_line
+        ON prior_line.tenant_id=pc.tenant_id
+       AND prior_line.id=pc.inventory_document_line_id
+     WHERE pc.tenant_id=NEW.tenant_id
+       AND pc.batch_id=NEW.batch_id
+       AND prior_line.document_id<>v_document_id
+  ) THEN
+    RAISE EXCEPTION 'A production batch can only consume one inventory document'
+      USING ERRCODE='23514';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
       FROM inventory_document_lines AS l

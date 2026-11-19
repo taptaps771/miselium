@@ -50,8 +50,9 @@ QtObject {
     property string glassBaseColor: preferences.glassBaseColor
     property string glassPreviewBackground: preferences.glassPreviewBackground
 
-    readonly property bool dark: mode === "Dark" || style === "Industrial Dark" || style === "Aurora"
-        || (mode === "System" && Qt.styleHints.colorScheme === Qt.ColorScheme.Dark)
+    readonly property bool dark: mode === "Dark"
+        || (mode === "System" && (style === "Industrial Dark" || style === "Aurora"
+            || Qt.styleHints.colorScheme === Qt.ColorScheme.Dark))
     readonly property bool glass: style === "Glassmorphism"
     readonly property bool minimal: style === "Minimalist"
     readonly property bool clay: style === "Claymorphism"

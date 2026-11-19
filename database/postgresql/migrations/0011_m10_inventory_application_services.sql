@@ -24,6 +24,28 @@ SELECT r.tenant_id, r.id, p.id
  WHERE r.code IN ('owner','admin')
 ON CONFLICT (tenant_id, role_id, permission_id) DO NOTHING;
 
+-- Preserve the original posting timestamp when a posted document is reversed.
+DO $m10$
+DECLARE v_constraint text;
+BEGIN
+  FOR v_constraint IN
+    SELECT conname
+      FROM pg_constraint
+     WHERE conrelid='inventory_documents'::regclass
+       AND contype='c'
+       AND pg_get_constraintdef(oid) ILIKE '%posted_at%'
+  LOOP
+    EXECUTE format('ALTER TABLE inventory_documents DROP CONSTRAINT %I', v_constraint);
+  END LOOP;
+END;
+$m10$;
+ALTER TABLE inventory_documents
+  ADD CONSTRAINT inventory_documents_posted_timestamp_check
+  CHECK (
+    (status IN ('posted','reversed') AND posted_at IS NOT NULL)
+    OR (status NOT IN ('posted','reversed') AND posted_at IS NULL)
+  );
+
 -- A posted document can transition to "reversed" exactly once. All other
 -- changes to a posted document remain forbidden. Ledger rows stay append-only.
 CREATE OR REPLACE FUNCTION guard_posted_inventory_document()

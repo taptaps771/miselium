@@ -58,7 +58,7 @@ def _db_error(exc: DBAPIError) -> None:
     state = _sqlstate(exc)
     if state == "42501":
         raise InventoryPermissionDenied("Inventory permission is required.") from None
-    if state in {"23505", "23514", "22023", "P0002", "55000"}:
+    if state in {"23502", "23503", "23505", "23514", "22023", "P0002", "55000"}:
         raise InventoryServiceError("The inventory operation violates a business invariant.") from None
     raise exc
 
@@ -144,11 +144,15 @@ def post_inventory_document(
                 SELECT l.id, l.line_no, l.item_id, l.lot_id, l.quantity,
                        l.unit_cost_snapshot, l.currency, l.line_value_snapshot,
                        l.conversion_to_base_snapshot, l.base_quantity,
-                       i.is_lot_tracked, i.allow_negative_stock,
-                       lot.status AS lot_status, lot.item_id AS lot_item_id
+                       i.is_lot_tracked, i.allow_negative_stock, i.is_active AS item_is_active,
+                       i.base_unit_id, iu.conversion_to_base AS configured_conversion,
+                       lot.status AS lot_status, lot.item_id AS lot_item_id,
+                       lot.expires_at AS lot_expires_at
                   FROM inventory_document_lines AS l
                   JOIN inventory_items AS i
                     ON i.tenant_id=l.tenant_id AND i.id=l.item_id
+             LEFT JOIN inventory_item_units AS iu
+                    ON iu.tenant_id=l.tenant_id AND iu.item_id=l.item_id AND iu.unit_id=l.unit_id
              LEFT JOIN inventory_lots AS lot
                     ON lot.tenant_id=l.tenant_id AND lot.id=l.lot_id
                  WHERE l.tenant_id=:tenant_id AND l.document_id=:document_id
@@ -163,6 +167,19 @@ def post_inventory_document(
         movement_warehouses = {UUID(str(source))} if source else set()
         if destination:
             movement_warehouses.add(UUID(str(destination)))
+        warehouse_rows = session.execute(
+            text(
+                """
+                SELECT id, is_active FROM warehouses
+                 WHERE tenant_id=:tenant_id AND id = ANY(:warehouse_ids)
+                """
+            ),
+            {"tenant_id": str(tenant_id), "warehouse_ids": [str(value) for value in movement_warehouses]},
+        ).mappings().all()
+        if len(warehouse_rows) != len(movement_warehouses) or any(
+            not bool(row["is_active"]) for row in warehouse_rows
+        ):
+            raise InventoryServiceError("Every inventory movement warehouse must be active.")
         lock_keys = {
             (warehouse_id, UUID(str(line["item_id"])), line["lot_id"])
             for warehouse_id in movement_warehouses
@@ -175,6 +192,19 @@ def post_inventory_document(
             item_id = UUID(str(line["item_id"]))
             lot_id = UUID(str(line["lot_id"])) if line["lot_id"] else None
             base_quantity = Decimal(line["base_quantity"])
+            if not bool(line["item_is_active"]):
+                raise InventoryServiceError("Inactive inventory items cannot be moved.")
+            base_unit_id = UUID(str(line["base_unit_id"]))
+            unit_id = UUID(str(line["unit_id"]))
+            expected_conversion = (
+                Decimal("1")
+                if unit_id == base_unit_id
+                else Decimal(line["configured_conversion"])
+                if line["configured_conversion"] is not None
+                else None
+            )
+            if expected_conversion is None or Decimal(line["conversion_to_base_snapshot"]) != expected_conversion:
+                raise InventoryServiceError("The document unit conversion does not match the configured item unit.")
             if bool(line["is_lot_tracked"]) and lot_id is None:
                 raise InventoryServiceError("A lot-tracked item requires a lot on every movement.")
             if lot_id is not None:
@@ -182,6 +212,8 @@ def post_inventory_document(
                     raise InventoryServiceError("The selected lot does not belong to this item.")
                 if line["lot_status"] != "active":
                     raise InventoryServiceError("Only active inventory lots can be moved.")
+                if line["lot_expires_at"] is not None and line["lot_expires_at"] < document["occurred_at"].date():
+                    raise InventoryServiceError("Expired inventory lots cannot be moved.")
 
             outbound = document_type in {"issue", "production_consumption", "transfer"}
             inbound = not outbound

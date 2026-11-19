@@ -184,8 +184,6 @@ async def test_selection_token_cannot_be_used_as_access_token(api_client):
 
 
 def test_m9_api_refuses_legacy_sqlite_database():
-    import pytest
-
     with pytest.raises(RuntimeError, match="requires a PostgreSQL"):
         create_m9_app(database_url="sqlite:///./legacy-m7.db")
 

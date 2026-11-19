@@ -41,8 +41,12 @@ def test_m10_inventory_posting_transfer_reversal_and_production_consumption():
                 {"id": actor_id, "name": f"m10-service-{actor_id.hex}"},
             )
             connection.execute(
-                text("INSERT INTO tenants(id, code, name, status, approved_at, approval_reason)
-                    VALUES (:id, :code, 'M10 service', 'active', now(), 'M10 integration fixture')"),
+                text(
+                    """
+                    INSERT INTO tenants(id, code, name, status, approved_at, approval_reason)
+                    VALUES (:id, :code, 'M10 service', 'active', now(), 'M10 integration fixture')
+                    """
+                ),
                 {"id": tenant_id, "code": f"m10-{tenant_id.hex[:16]}"},
             )
             connection.execute(

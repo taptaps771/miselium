@@ -131,9 +131,9 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 currentIndex: window.currentPage
 
-                DashboardPage { }
-                CameraPage { }
-                SettingsPage { }
+                DashboardPage { themeController: theme }
+                CameraPage { themeController: theme }
+                SettingsPage { themeController: theme }
             }
         }
 

@@ -53,13 +53,14 @@ RETURNS trigger LANGUAGE plpgsql AS $m10$
 DECLARE v_status varchar(20);
 BEGIN
  IF TG_TABLE_NAME='inventory_documents' THEN
-   IF OLD.status='posted' THEN
-     IF TG_OP='UPDATE'
+   IF OLD.status IN ('posted','reversed') THEN
+     IF OLD.status='posted'
+        AND TG_OP='UPDATE'
         AND NEW.status='reversed'
         AND (to_jsonb(NEW)-'status'-'updated_at')=(to_jsonb(OLD)-'status'-'updated_at') THEN
        RETURN NEW;
      END IF;
-     RAISE EXCEPTION 'Posted inventory document is immutable; reverse it instead'
+     RAISE EXCEPTION 'Posted or reversed inventory document is immutable'
        USING ERRCODE='55000';
    END IF;
    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;

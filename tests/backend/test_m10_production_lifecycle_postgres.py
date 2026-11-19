@@ -189,16 +189,6 @@ def test_production_batch_transition_idempotency_hold_resume_and_guards():
                     idempotency_key="plan-1",
                 )
 
-            with pytest.raises(ProductionLifecycleError, match="material consumption"):
-                transition_production_batch(
-                    session,
-                    actor_user_id=actor_id,
-                    tenant_id=tenant_id,
-                    batch_id=batch_id,
-                    command="complete_mixing",
-                    idempotency_key="complete-mix-too-early",
-                )
-
             started = transition_production_batch(
                 session,
                 actor_user_id=actor_id,
@@ -209,6 +199,16 @@ def test_production_batch_transition_idempotency_hold_resume_and_guards():
             )
             assert started.to_status == "mixing"
             session.commit()
+
+            with pytest.raises(ProductionLifecycleError, match="material consumption"):
+                transition_production_batch(
+                    session,
+                    actor_user_id=actor_id,
+                    tenant_id=tenant_id,
+                    batch_id=batch_id,
+                    command="complete_mixing",
+                    idempotency_key="complete-mix-too-early",
+                )
 
             held = transition_production_batch(
                 session,

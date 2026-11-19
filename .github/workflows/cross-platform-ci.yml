@@ -101,10 +101,13 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0009_invitation_location_lookup_qualification.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0010_invitation_role_permission_boundary.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m10_inventory_application_services.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0012_modular_settings_and_machines.sql
       - name: Run M9 platform RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
       - name: Run M10 production and inventory RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
+      - name: Run M11 modular Settings and machine smoke test
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0012_modular_settings_smoke.sql
       - name: Run M9 tenant RBAC and invitation smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0003_tenant_rbac_invitation_roles_smoke.sql
       - name: Run M9 authenticated membership discovery smoke test

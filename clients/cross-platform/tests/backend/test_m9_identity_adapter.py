@@ -212,5 +212,6 @@ def test_list_active_tenants_sets_user_context_and_returns_memberships() -> None
     assert [tenant.tenant_id for tenant in tenants] == [tenant_a, tenant_b]
     assert [tenant.membership_id for tenant in tenants] == [membership_a, membership_b]
     assert "tm.user_id = :user_id" in session.calls[1][0]
+    assert "u.status = 'active'" in session.calls[1][0]
     assert "tm.status = 'active'" in session.calls[1][0]
     assert session.calls[1][1] == {"user_id": str(user_id)}

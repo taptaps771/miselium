@@ -8,7 +8,7 @@ for the next integration step and must be used with the M9 PostgreSQL schema.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from collections.abc import Callable
 from uuid import UUID
 
 from sqlalchemy import text
@@ -225,7 +225,7 @@ def verify_password_identity(
     *,
     email: str,
     password: str,
-    verifier: Any,
+    verifier: Callable[[str, str], bool],
 ) -> PasswordIdentity:
     """Resolve a verified global identity, then delegate hash verification."""
     identity = repository.resolve_password_identity(email)

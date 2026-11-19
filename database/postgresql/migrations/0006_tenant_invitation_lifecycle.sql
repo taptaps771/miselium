@@ -6,31 +6,12 @@ ALTER TABLE tenant_invitations
   ADD COLUMN accepted_at timestamptz,
   ADD COLUMN revoked_at timestamptz;
 
--- Preserve existing terminal invitation records without fabricating actor identities.
-UPDATE tenant_invitations
-   SET accepted_at = created_at
- WHERE status = 'accepted' AND accepted_by IS NOT NULL AND accepted_at IS NULL;
-UPDATE tenant_invitations
-   SET revoked_at = created_at
- WHERE status = 'revoked' AND revoked_at IS NULL;
-
-DO $m9_invitation_preflight$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM tenant_invitations
-     WHERE (status = 'accepted' AND accepted_by IS NULL)
-        OR (status = 'revoked' AND revoked_at IS NULL)
-  ) THEN
-    RAISE EXCEPTION
-      'Existing accepted/revoked invitations lack actor metadata; resolve before migration 0006';
-  END IF;
-END;
-$m9_invitation_preflight$;
-
+-- Timestamp columns are optional for historical terminal records. New
+-- transitions performed by these functions always populate the timestamps.
 ALTER TABLE tenant_invitations
   ADD CONSTRAINT ck_tenant_invitation_state_timestamps CHECK (
-    (status <> 'accepted' OR (accepted_by IS NOT NULL AND accepted_at IS NOT NULL))
-    AND (status <> 'revoked' OR revoked_at IS NOT NULL)
+    (accepted_at IS NULL OR status = 'accepted')
+    AND (revoked_at IS NULL OR status = 'revoked')
   );
 
 CREATE UNIQUE INDEX uq_tenant_invitation_pending_email

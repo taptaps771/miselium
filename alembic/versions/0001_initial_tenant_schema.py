@@ -1,7 +1,6 @@
 """Initial tenant-aware identity, membership, records, and device tables."""
 
 import sqlalchemy as sa
-
 from alembic import op
 
 revision = "0001_initial_tenant_schema"

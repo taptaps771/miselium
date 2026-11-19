@@ -4,7 +4,6 @@ import QtQuick.Layouts
 
 Item {
     id: window
-    anchors.fill: parent
 
     property color panelColor: "#111c2f"
     property color borderColor: "#26364d"

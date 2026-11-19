@@ -14,6 +14,7 @@ pytest.importorskip("PySide6", reason="PySide6 is required for Qt runtime import
         "PySide6.QtGui",
         "PySide6.QtQml",
         "PySide6.QtQuick",
+        "app.application.app_controller",
     ],
 )
 def test_required_qt_module_imports(module_name: str) -> None:

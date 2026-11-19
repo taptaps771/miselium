@@ -7,7 +7,6 @@ import platform
 import sys
 from importlib.metadata import PackageNotFoundError, version
 
-
 MODULES = {
     "QtCore": "PySide6.QtCore",
     "QtGui": "PySide6.QtGui",

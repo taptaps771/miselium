@@ -5,7 +5,6 @@ import "SettingsRegistry.js" as SettingsRegistry
 
 Item {
     id: page
-    anchors.fill: parent
 
     property color panelColor: "#111c2f"
     property color borderColor: "#26364d"

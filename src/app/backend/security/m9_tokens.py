@@ -7,7 +7,6 @@ from uuid import UUID, uuid4
 
 import jwt
 
-
 ISSUER = "miselium-api"
 SELECTION_AUDIENCE = "miselium-tenant-selection"
 ACCESS_AUDIENCE = "miselium-client"

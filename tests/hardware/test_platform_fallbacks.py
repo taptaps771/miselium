@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from app.hardware.adapters.platform.capabilities import NativeBridgeCapabilityAdapter, QtModuleCapabilityAdapter
+from app.hardware.adapters.platform.capabilities import (
+    NativeBridgeCapabilityAdapter,
+    QtModuleCapabilityAdapter,
+)
 from app.hardware.adapters.platform.unavailable import (
     UnsupportedBiometricService,
     UnsupportedBluetoothService,

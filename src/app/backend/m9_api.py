@@ -29,16 +29,16 @@ from app.backend.security.m9_tokens import (
     decode_m9_access_token,
     decode_tenant_selection_token,
 )
-from app.backend.services.tenant_lifecycle import (
-    PlatformPermissionDenied,
-    RegistrationError,
-    TenantLifecycleError,
-    VerificationError,
-    approve_tenant_registration,
-    list_pending_tenants,
-    register_global_user,
-    request_tenant_registration,
-    verify_global_email,
+from app.backend.services.authentication import (
+    authenticate_global_user,
+    authorize_tenant_context,
+)
+from app.backend.services.inventory import (
+    InventoryPermissionDenied,
+    InventoryServiceError,
+    consume_production_materials,
+    post_inventory_document,
+    reverse_inventory_document,
 )
 from app.backend.services.invitations import (
     InvitationError,
@@ -55,18 +55,17 @@ from app.backend.services.membership_admin import (
     list_tenant_members,
     transition_member,
 )
-from app.backend.services.authentication import (
-    authenticate_global_user,
-    authorize_tenant_context,
+from app.backend.services.tenant_lifecycle import (
+    PlatformPermissionDenied,
+    RegistrationError,
+    TenantLifecycleError,
+    VerificationError,
+    approve_tenant_registration,
+    list_pending_tenants,
+    register_global_user,
+    request_tenant_registration,
+    verify_global_email,
 )
-from app.backend.services.inventory import (
-    InventoryServiceError,
-    InventoryPermissionDenied,
-    post_inventory_document,
-    reverse_inventory_document,
-    consume_production_materials,
-)
-
 from app.backend.services.tenant_roles import (
     TenantRoleError,
     TenantRolePermissionDenied,

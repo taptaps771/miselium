@@ -10,7 +10,6 @@ from sqlalchemy import create_engine, text
 from app.backend.m9_api import create_m9_app
 from app.backend.security.passwords import hash_password
 
-
 USER_ID = UUID("00000000-0000-0000-0000-000000000901")
 TENANT_ID = UUID("00000000-0000-0000-0000-000000000902")
 EMAIL = "m9-api-integration@example.com"

@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
@@ -17,7 +17,6 @@ from app.config import AppSettings, get_settings
 from app.core.lifecycle import AppLifecycle
 from app.core.logging_config import configure_logging
 from app.hardware.runtime import create_hardware_runtime
-
 
 QML_MAIN = Path(__file__).resolve().parent / "ui" / "Main.qml"
 

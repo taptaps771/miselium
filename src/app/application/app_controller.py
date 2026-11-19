@@ -11,10 +11,9 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from PySide6.QtCore import (
-    QCoreApplication,
-    QGuiApplication,
-    QObject,
     Property,
+    QCoreApplication,
+    QObject,
     QRunnable,
     QStandardPaths,
     QThreadPool,
@@ -22,6 +21,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
+from PySide6.QtGui import QGuiApplication
 
 from app.config import AppSettings
 from app.core.lifecycle import AppLifecycle

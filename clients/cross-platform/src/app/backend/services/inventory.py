@@ -356,7 +356,7 @@ def reverse_inventory_document(
     document_id: UUID,
     reversal_document_no: str,
 ) -> InventoryPostingResult:
-    """Create an opposite posted document; never mutate the original ledger."""
+    """Create an exact inverse ledger document; never rewrite original history."""
     if not reversal_document_no.strip() or len(reversal_document_no.strip()) > 60:
         raise InventoryServiceError("A valid reversal document number is required.")
     _set_context(session, actor_user_id, tenant_id)
@@ -365,7 +365,7 @@ def reverse_inventory_document(
             text(
                 """
                 SELECT id, document_no, document_type, status, source_warehouse_id,
-                       destination_warehouse_id, occurred_at
+                       destination_warehouse_id
                   FROM inventory_documents
                  WHERE tenant_id=:tenant_id AND id=:document_id
                  FOR UPDATE
@@ -411,15 +411,42 @@ def reverse_inventory_document(
             reverse_source = original["destination_warehouse_id"]
             reverse_destination = original["source_warehouse_id"]
         elif reverse_type in {"issue", "production_consumption"}:
-            reverse_source = original["destination_warehouse_id"]
-            if reverse_source is None:
-                reverse_source = original["source_warehouse_id"]
+            reverse_source = original["destination_warehouse_id"] or original["source_warehouse_id"]
             reverse_destination = None
         else:
             reverse_source = None
-            reverse_destination = original["source_warehouse_id"]
-            if reverse_destination is None:
-                reverse_destination = original["destination_warehouse_id"]
+            reverse_destination = original["source_warehouse_id"] or original["destination_warehouse_id"]
+
+        original_lines = session.execute(
+            text(
+                """
+                SELECT line_no, item_id, lot_id, item_code_snapshot, item_name_snapshot,
+                       quantity, unit_id, unit_name_snapshot, conversion_to_base_snapshot,
+                       base_quantity, unit_cost_snapshot, currency, line_value_snapshot, notes
+                  FROM inventory_document_lines
+                 WHERE tenant_id=:tenant_id AND document_id=:document_id
+                 ORDER BY line_no
+                """
+            ),
+            {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+        ).mappings().all()
+        original_entries = session.execute(
+            text(
+                """
+                SELECT le.document_line_id, le.warehouse_id, le.item_id, le.lot_id,
+                       le.quantity_delta, le.value_delta, le.currency,
+                       le.unit_cost_snapshot, ol.line_no
+                  FROM inventory_ledger_entries AS le
+                  JOIN inventory_document_lines AS ol
+                    ON ol.tenant_id=le.tenant_id AND ol.id=le.document_line_id
+                 WHERE le.tenant_id=:tenant_id AND le.document_id=:document_id
+                 ORDER BY ol.line_no, le.warehouse_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+        ).mappings().all()
+        if not original_lines or not original_entries:
+            raise InventoryServiceError("The original document has no complete ledger history.")
 
         reversal_id = session.execute(
             text(
@@ -447,19 +474,6 @@ def reverse_inventory_document(
                 "actor_user_id": str(actor_user_id),
             },
         ).scalar_one()
-        original_lines = session.execute(
-            text(
-                """
-                SELECT line_no, item_id, lot_id, item_code_snapshot, item_name_snapshot,
-                       quantity, unit_id, unit_name_snapshot, conversion_to_base_snapshot,
-                       base_quantity, unit_cost_snapshot, currency, line_value_snapshot, notes
-                  FROM inventory_document_lines
-                 WHERE tenant_id=:tenant_id AND document_id=:document_id
-                 ORDER BY line_no
-                """
-            ),
-            {"tenant_id": str(tenant_id), "document_id": str(document_id)},
-        ).mappings().all()
         for line in original_lines:
             session.execute(
                 text(
@@ -479,12 +493,104 @@ def reverse_inventory_document(
                 ),
                 {"tenant_id": str(tenant_id), "document_id": str(reversal_id), **line},
             )
-        result = post_inventory_document(
-            session,
-            actor_user_id=actor_user_id,
-            tenant_id=tenant_id,
-            document_id=UUID(str(reversal_id)),
+
+        reversal_lines = session.execute(
+            text(
+                """
+                SELECT id, line_no FROM inventory_document_lines
+                 WHERE tenant_id=:tenant_id AND document_id=:document_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "document_id": str(reversal_id)},
+        ).mappings().all()
+        reversal_line_ids = {int(row["line_no"]): row["id"] for row in reversal_lines}
+        stock_keys = {
+            (
+                UUID(str(entry["warehouse_id"])),
+                UUID(str(entry["item_id"])),
+                UUID(str(entry["lot_id"])) if entry["lot_id"] else None,
+            )
+            for entry in original_entries
+        }
+        _lock_stock_keys(session, tenant_id, stock_keys)
+
+        # A reversal that would make a non-negative item negative is rejected.
+        for entry in original_entries:
+            inverse_quantity = -Decimal(entry["quantity_delta"])
+            if inverse_quantity >= 0:
+                continue
+            balance = session.execute(
+                text(
+                    """
+                    SELECT COALESCE(sum(quantity_delta),0)
+                      FROM inventory_ledger_entries
+                     WHERE tenant_id=:tenant_id AND warehouse_id=:warehouse_id
+                       AND item_id=:item_id AND lot_id IS NOT DISTINCT FROM :lot_id
+                       AND currency=:currency
+                    """
+                ),
+                {
+                    "tenant_id": str(tenant_id),
+                    "warehouse_id": str(entry["warehouse_id"]),
+                    "item_id": str(entry["item_id"]),
+                    "lot_id": str(entry["lot_id"]) if entry["lot_id"] else None,
+                    "currency": entry["currency"],
+                },
+            ).scalar_one()
+            negative_allowed = session.execute(
+                text(
+                    "SELECT allow_negative_stock FROM inventory_items "
+                    "WHERE tenant_id=:tenant_id AND id=:item_id"
+                ),
+                {"tenant_id": str(tenant_id), "item_id": str(entry["item_id"])},
+            ).scalar_one()
+            if Decimal(balance) < abs(inverse_quantity) and not bool(negative_allowed):
+                raise InventoryServiceError(
+                    "The reversal would create negative stock because the original quantity has since been used."
+                )
+
+        session.execute(
+            text(
+                """
+                UPDATE inventory_documents
+                   SET status='posted', posted_at=now(), posted_by=:actor_user_id
+                 WHERE tenant_id=:tenant_id AND id=:reversal_id
+                """
+            ),
+            {
+                "tenant_id": str(tenant_id),
+                "reversal_id": str(reversal_id),
+                "actor_user_id": str(actor_user_id),
+            },
         )
+        for entry in original_entries:
+            session.execute(
+                text(
+                    """
+                    INSERT INTO inventory_ledger_entries(
+                        tenant_id, document_id, document_line_id, warehouse_id,
+                        item_id, lot_id, quantity_delta, value_delta, currency,
+                        unit_cost_snapshot, occurred_at
+                    ) VALUES (
+                        :tenant_id, :reversal_id, :line_id, :warehouse_id,
+                        :item_id, :lot_id, :quantity_delta, :value_delta, :currency,
+                        :unit_cost, now()
+                    )
+                    """
+                ),
+                {
+                    "tenant_id": str(tenant_id),
+                    "reversal_id": str(reversal_id),
+                    "line_id": reversal_line_ids[int(entry["line_no"])],
+                    "warehouse_id": entry["warehouse_id"],
+                    "item_id": entry["item_id"],
+                    "lot_id": entry["lot_id"],
+                    "quantity_delta": -Decimal(entry["quantity_delta"]),
+                    "value_delta": -Decimal(entry["value_delta"]),
+                    "currency": entry["currency"],
+                    "unit_cost": entry["unit_cost_snapshot"],
+                },
+            )
         session.execute(
             text(
                 """
@@ -517,10 +623,7 @@ def reverse_inventory_document(
         )
     except DBAPIError as exc:
         _db_error(exc)
-    return InventoryPostingResult(
-        UUID(str(reversal_id)), result.status, result.ledger_entries
-    )
-
+    return InventoryPostingResult(UUID(str(reversal_id)), "posted", len(original_entries))
 
 def consume_production_materials(
     session: Session,

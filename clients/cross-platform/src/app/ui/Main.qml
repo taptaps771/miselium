@@ -22,6 +22,7 @@ ApplicationWindow {
             background: Rectangle { color: "#111c2f" }
             TabButton { text: "Dashboard" }
             TabButton { text: "Camera & Scanner" }
+            TabButton { text: "Pengaturan" }
         }
 
         StackLayout {
@@ -31,6 +32,7 @@ ApplicationWindow {
 
             DashboardPage { }
             CameraPage { }
+            SettingsPage { }
         }
     }
 }

@@ -111,6 +111,9 @@ QtObject {
     readonly property int cardRadius: brutalist ? 0 : (clay ? 22 : (minimal ? 10 : (glass ? glassRadius + 6 : 16)))
     readonly property int controlRadius: brutalist ? 0 : (minimal ? 6 : (glass ? Math.max(8, glassRadius - 4) : 8))
     readonly property var brandScale: makeScale(brand)
+    readonly property var accentScale: makeScale(accentAnchor)
+    readonly property var backgroundScale: makeScale(backgroundAnchor)
+    readonly property var borderScale: makeScale(borderAnchor)
     readonly property real brandTextContrast: contrastRatio(brand, dark ? "#FFFFFF" : "#FFFFFF")
     readonly property bool useHeavyEffects: false
 

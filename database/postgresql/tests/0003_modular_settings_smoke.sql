@@ -63,6 +63,27 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema=current_schema() AND table_name='kumbungs' AND column_name='owner_name'
+    ) THEN
+        RAISE EXCEPTION 'Kumbung owner field is missing';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema=current_schema() AND table_name='recipe_version_items' AND column_name='is_base_ingredient'
+    ) THEN
+        RAISE EXCEPTION 'Recipe base ingredient marker is missing';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema=current_schema() AND table_name='sterilization_runs' AND column_name='cooling_completed_at'
+    ) THEN
+        RAISE EXCEPTION 'Sterilization cooling readiness field is missing';
+    END IF;
+
+    IF NOT EXISTS (
         SELECT 1 FROM production_machines
         WHERE tenant_id=v_tenant AND id=v_machine AND machine_type_code='MIXER'
     ) THEN

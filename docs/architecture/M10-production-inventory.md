@@ -26,7 +26,7 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 - Incubation duration is configurable per record. Do not hardcode 30 days.
 - Production lots connect outputs to batches and varieties. Kumbung placement is a signed event ledger; capacity and available quantities are checked transactionally.
 - Every production loss records stage, reason, quantity and disposition. `press_baglog` is a supported loss stage after migration 0013. Recovery creates a new traceable lot and cost record; it never silently restores the source lot.
-- Migration 0013 adds immutable `production_press_outputs` records. Each press pass records processed, good and rejected quantities with the invariant `processed = good + rejected`; only good output is eligible for production-output posting.
+- Migration 0013 adds immutable `production_press_outputs` records. Each press pass records processed, good and rejected quantities with the invariant `processed = good + rejected`; only good output is eligible for production-output posting. Migration 0014 strengthens the insert guard: the machine must be active, share the batch production unit, and use the batch output unit; batch and machine rows are locked during validation.
 - Material cost comes from actual posted consumption entries. Finalized production cost snapshots freeze material cost, overhead (zero until later allocation), total, output quantity, unit cost and currency. Later overhead is a separate adjustment/allocation, not a rewrite.
 
 ## Application services and API
@@ -83,6 +83,7 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] Implement atomic posting, transaction-scoped stock locks, transfer and exact ledger reversal services.
 - [x] Implement production material consumption validation and immutable batch cost links.
 - [x] Add grouped sterilization-cycle schema and immutable press output records with tenant constraints, forced RLS, indexes and schema smoke checks (migration 0013; execution pending).
+- [x] Strengthen press output validation for machine activity, production-unit consistency and output-unit consistency (migration 0014; PostgreSQL execution pending).
 - [ ] Implement production lifecycle transitions, sterilizer/kumbung capacity validation and output/loss/recovery posting orchestration.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
@@ -91,7 +92,7 @@ The remaining production lifecycle orchestration (sterilization, inoculation, in
 ## Apply
 
 Run M9 migrations 0001 and 0003–0010 in their documented order, with M10 schema
-migration 0002 applied after 0001. Apply 0011, 0012 and 0013 in order:
+migration 0002 applied after 0001. Apply 0011, 0012, 0013 and 0014 in order:
 
 ```sql
 CREATE ROLE miselium_app LOGIN NOSUPERUSER NOBYPASSRLS;
@@ -104,6 +105,7 @@ Apply the application-service and lifecycle migrations:
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m10_inventory_application_services.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0012_modular_settings_and_machines.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0013_m10_1_2_production_stage_records.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0014_m10_1_2_1_press_output_integrity.sql
 ```
 
 Run the smoke test on a disposable database as an administrator with a pre-created non-owner, non-superuser `miselium_app` role:
@@ -119,6 +121,7 @@ Then execute both smoke checks:
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0013_m10_1_2_production_stage_records_smoke.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0014_m10_1_2_1_press_output_integrity_smoke.sql
 ```
 
 The smoke test checks draft-ledger rejection, posting, posted-line immutability, append-only ledger behavior, tenant-scoped reads and cross-tenant write rejection. Do not test RLS as a superuser, table owner or BYPASSRLS role. The script rolls back its fixtures.

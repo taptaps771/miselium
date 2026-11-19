@@ -1,6 +1,6 @@
 # M7 → M9 Backend Adaptation Contract
 
-Status: architecture and implementation contract; not yet an executable adapter.
+Status: architecture contract plus additive RBAC migration; runtime adapter remains incomplete.
 Target: canonical PostgreSQL 16+ schema in `database/postgresql/migrations/`.
 Preserved prototype: `clients/cross-platform/src/app/backend/`.
 
@@ -53,7 +53,7 @@ The existing M7 backend remains isolated until the adapter and PostgreSQL integr
 
 ## 5. Invitation adaptation
 
-M9 `tenant_invitations` currently has no role column, unlike M7. Do not reintroduce an unscoped free-form role string. Before restoring invitation acceptance, add an additive migration that stores a requested role as a tenant-scoped reference, for example nullable `role_id` with composite foreign key `(tenant_id, role_id) → tenant_roles(tenant_id, id)`.
+Migration `0003_tenant_rbac_invitation_roles.sql` adds a required `role_id` to `tenant_invitations` with composite foreign key `(tenant_id, role_id) → tenant_roles(tenant_id, id)`. Existing invitations are conservatively backfilled to the tenant's `member` role. The migration also seeds built-in owner/admin/member roles and a limited tenant permission vocabulary. The tenant-creation service must call `ensure_tenant_default_roles(tenant_id)` inside the same transaction after setting transaction-local tenant context. Existing memberships are backfilled to the least-privileged member role; promotion must be explicit and audited.
 
 Acceptance must:
 - lock the invitation row;
@@ -94,7 +94,7 @@ The runtime database role must not be a superuser, table owner, or `BYPASSRLS` r
 
 Do not mark the adapter complete until all of these pass against PostgreSQL 16+ using the restricted runtime role:
 
-- [ ] M9 and M10 migrations apply in order to a clean PostgreSQL database.
+- [x] Additive M9 RBAC/invitation migration authored; PostgreSQL CI job now applies M9, M10, and RBAC migrations in order and runs smoke tests.
 - [ ] Global user can have memberships in multiple tenants without duplicate user accounts.
 - [ ] Password authentication uses global auth identity and verified contact points.
 - [ ] Suspended users, suspended memberships, and non-active tenants fail closed.

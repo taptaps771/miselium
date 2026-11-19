@@ -14,6 +14,26 @@ ALTER TABLE tenant_invitations
     AND (revoked_at IS NULL OR status = 'revoked')
   );
 
+-- Expire stale rows before enforcing one outstanding invitation per email.
+UPDATE tenant_invitations
+   SET status = 'expired'
+ WHERE status = 'pending' AND expires_at <= now();
+
+DO $m9_invitation_unique_preflight$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM tenant_invitations
+     WHERE status = 'pending'
+     GROUP BY tenant_id, email_normalized
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION
+      'Multiple pending invitations exist for one tenant/email; resolve duplicates before migration 0006';
+  END IF;
+END;
+$m9_invitation_unique_preflight$;
+
 CREATE UNIQUE INDEX uq_tenant_invitation_pending_email
   ON tenant_invitations(tenant_id, email_normalized)
   WHERE status = 'pending';

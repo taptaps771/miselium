@@ -1,0 +1,52 @@
+name: Cross-platform client and M7 adapter CI
+
+on:
+  pull_request:
+    paths:
+      - "clients/cross-platform/**"
+      - ".github/workflows/cross-platform-ci.yml"
+  push:
+    branches:
+      - "feat/m0-m8-foundation"
+    paths:
+      - "clients/cross-platform/**"
+      - ".github/workflows/cross-platform-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: clients/cross-platform
+    env:
+      QT_QPA_PLATFORM: offscreen
+      MISELIUM_JWT_SECRET: ci-only-secret-value-not-for-production-123456
+      MISELIUM_ENVIRONMENT: testing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: clients/cross-platform/requirements-dev.txt
+      - name: Install client and backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt -r requirements/server.txt
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: python -m pytest -q
+      - name: Compile
+        run: python -m compileall -q src main.py
+      - name: Validate Android manifest
+        if: runner.os == 'Linux'
+        run: python scripts/check_android_manifest.py

@@ -39,12 +39,18 @@ CREATE UNIQUE INDEX uq_global_verified_email
 ALTER TABLE tenants
   ADD COLUMN approved_by uuid REFERENCES users(id) ON DELETE SET NULL,
   ADD COLUMN approved_at timestamptz,
-  ADD COLUMN approval_reason text,
+  ADD COLUMN approval_reason text;
+
+-- Preserve existing active tenants without inventing a platform approver.
+-- Their creation timestamp is retained as the legacy activation baseline.
+UPDATE tenants
+   SET approved_at = created_at,
+       approval_reason = 'Grandfathered active tenant from pre-approval lifecycle'
+ WHERE status = 'active';
+
+ALTER TABLE tenants
   ADD CONSTRAINT ck_tenant_approval_metadata
-    CHECK (
-      (approved_by IS NULL AND approved_at IS NULL)
-      OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)
-    ) NOT VALID;
+  CHECK (status <> 'active' OR approved_at IS NOT NULL);
 
 INSERT INTO platform_permissions(code, description)
 VALUES (

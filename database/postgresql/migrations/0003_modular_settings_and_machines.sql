@@ -206,6 +206,17 @@ ALTER TABLE production_batches
         'inoculation','incubation','ready','on_hold','closed','cancelled'
     ));
 
+-- Cooling is recorded as readiness metadata on the sterilization run, not as
+-- an independent production batch status/form.
+ALTER TABLE sterilization_runs
+    ADD COLUMN cooling_completed_at timestamptz,
+    ADD COLUMN cooling_notes text,
+    ADD CONSTRAINT sterilization_cooling_completion_check
+        CHECK (
+            cooling_completed_at IS NULL
+            OR (completed_at IS NOT NULL AND cooling_completed_at >= completed_at)
+        );
+
 -- Kumbungs already exist in M9 and are referenced by the M10 placement ledger.
 -- Keep the location relation and add a tenant-entered owner label for the initial setup UI.
 ALTER TABLE kumbungs

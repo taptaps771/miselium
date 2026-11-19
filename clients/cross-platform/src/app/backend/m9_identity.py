@@ -192,6 +192,7 @@ class M9IdentityRepository:
                 """
                 SELECT tm.tenant_id, tm.id AS membership_id, t.code, t.name
                   FROM tenant_memberships AS tm
+                  JOIN users AS u ON u.id = tm.user_id AND u.status = 'active'
                   JOIN tenants AS t ON t.id = tm.tenant_id
                  WHERE tm.user_id = :user_id
                    AND tm.status = 'active'

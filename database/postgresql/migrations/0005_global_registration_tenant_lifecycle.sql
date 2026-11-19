@@ -59,6 +59,70 @@ VALUES (
 )
 ON CONFLICT (code) DO NOTHING;
 
+-- Approval is a narrowly scoped SECURITY DEFINER operation. The API role
+-- cannot directly UPDATE tenant status, even if a request handler is bypassed.
+CREATE OR REPLACE FUNCTION platform_approve_pending_tenant(
+  p_actor_user_id uuid,
+  p_tenant_id uuid,
+  p_reason text
+)
+RETURNS TABLE(tenant_id uuid, tenant_code varchar(40), tenant_name varchar(180))
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+DECLARE
+  v_tenant_id uuid;
+  v_tenant_code varchar(40);
+  v_tenant_name varchar(180);
+BEGIN
+  IF length(trim(coalesce(p_reason, ''))) < 3 THEN
+    RAISE EXCEPTION 'approval reason is required' USING ERRCODE = '22023';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM platform_user_roles AS ur
+      JOIN users AS u ON u.id = ur.user_id AND u.status = 'active'
+      JOIN platform_role_permissions AS rp ON rp.role_id = ur.role_id
+      JOIN platform_permissions AS p ON p.id = rp.permission_id
+     WHERE ur.user_id = p_actor_user_id
+       AND p.code = 'platform.tenants.approve'
+  ) THEN
+    RAISE EXCEPTION 'platform permission required' USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE tenants AS t
+     SET status = 'active',
+         approved_by = p_actor_user_id,
+         approved_at = now(),
+         approval_reason = trim(p_reason)
+   WHERE t.id = p_tenant_id
+     AND t.status = 'pending'
+  RETURNING t.id, t.code, t.name
+       INTO v_tenant_id, v_tenant_code, v_tenant_name;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'tenant is not pending or does not exist' USING ERRCODE = 'P0002';
+  END IF;
+
+  INSERT INTO platform_audit_events(
+    actor_user_id, action, target_type, target_id, reason, metadata
+  )
+  VALUES (
+    p_actor_user_id, 'tenant.registration_approved', 'tenant', v_tenant_id,
+    trim(p_reason),
+    jsonb_build_object('tenant_code', v_tenant_code, 'tenant_name', v_tenant_name)
+  );
+
+  RETURN QUERY SELECT v_tenant_id, v_tenant_code, v_tenant_name;
+END;
+$;
+
+REVOKE ALL ON FUNCTION platform_approve_pending_tenant(uuid, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION platform_approve_pending_tenant(uuid, uuid, text)
+  TO miselium_app;
+
 -- Column-level grants keep global identity data least-privileged even
 -- when a SQL injection reaches the runtime connection.
 GRANT SELECT (id, status) ON users TO miselium_app;
@@ -87,8 +151,6 @@ GRANT UPDATE (consumed_at)
 
 GRANT SELECT (id, code, name, status, created_at) ON tenants TO miselium_app;
 GRANT INSERT (code, name, legal_name, status) ON tenants TO miselium_app;
-GRANT UPDATE (status, approved_by, approved_at, approval_reason)
-  ON tenants TO miselium_app;
 
 GRANT INSERT (actor_user_id, action, target_type, target_id, reason, metadata)
   ON platform_audit_events TO miselium_app;

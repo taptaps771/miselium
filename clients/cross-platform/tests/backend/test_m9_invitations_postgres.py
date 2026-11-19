@@ -84,10 +84,6 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
                 text("SELECT id FROM tenant_roles WHERE tenant_id=:tenant_id AND code='owner'"),
                 {"tenant_id": tenant_id},
             ).scalar_one()
-            member_role_id = connection.execute(
-                text("SELECT id FROM tenant_roles WHERE tenant_id=:tenant_id AND code='member'"),
-                {"tenant_id": tenant_id},
-            ).scalar_one()
             membership_id = connection.execute(
                 text(
                     """
@@ -112,15 +108,15 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
                     "user_id": inviter_id,
                 },
             )
-            location_id = connection.execute(
+            connection.execute(
                 text(
                     """
                     INSERT INTO locations(tenant_id, code, name, is_primary, is_active)
-                    VALUES (:tenant_id, 'MAIN', 'Main', true, true) RETURNING id
+                    VALUES (:tenant_id, 'MAIN', 'Main', true, true)
                     """
                 ),
                 {"tenant_id": tenant_id},
-            ).scalar_one()
+            )
     finally:
         engine.dispose()
 

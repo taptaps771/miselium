@@ -44,7 +44,7 @@ BEGIN
 
   RETURN QUERY
     SELECT m.id, u.id, up.display_name, cp.normalized_value, m.status, m.joined_at,
-           COALESCE(array_agg(DISTINCT r.code) FILTER (WHERE r.code IS NOT NULL), ARRAY[]::text[])
+           COALESCE(array_agg(DISTINCT r.code::text) FILTER (WHERE r.code IS NOT NULL), ARRAY[]::text[])
       FROM tenant_memberships m
       JOIN users u ON u.id = m.user_id
       LEFT JOIN user_profiles up ON up.user_id = u.id

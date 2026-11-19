@@ -37,11 +37,21 @@ The existing M7 backend remains isolated until the adapter and PostgreSQL integr
 
 ## 3. Authentication and tenant selection
 
-The initial service boundary is implemented in `src/app/backend/services/authentication.py`:
+The initial service boundary is implemented in `src/app/backend/services/authentication.py`, and the standalone canonical API factory is `src/app/backend/m9_api.py` (run with `uvicorn app.backend.m9_api:create_m9_app --factory` and an explicit PostgreSQL `MISELIUM_DATABASE_URL`). It does not import the M7 ORM models or create the legacy schema.
+
+The API flow is:
+1. `POST /v1/auth/login`: verify a global verified-email/password identity and return a short-lived tenant-selection token plus active tenant options; no tenant access token is issued yet.
+2. `GET /v1/auth/tenants`: re-list only the authenticated user's active tenant memberships using transaction-local RLS user context.
+3. `POST /v1/auth/select-tenant`: re-check account, tenant, and membership state, resolve RBAC permissions, and issue a tenant-scoped access token.
+4. `GET /v1/me`: re-authorize the membership and return the current tenant context and effective permissions.
+
+Selection tokens and access tokens use separate JWT audiences and purposes, so a selection token cannot access tenant endpoints. The API commits or rolls back each request transaction before releasing the SQLAlchemy session.
+
+The service boundary includes:
 - `authenticate_global_user(...)` verifies one global password identity and returns only that user's active tenant options.
 - `authorize_tenant_context(...)` re-checks active account, tenant, and membership state, then resolves permissions from tenant RBAC.
 
-These services are unit-tested but are not yet wired into the M7 FastAPI routes. The API integration must use a caller-managed transaction and must commit/rollback before returning a pooled connection.
+The M9 API is intentionally a separate ASGI factory from the legacy M7 API. It requires PostgreSQL and refuses the legacy SQLite fallback. Route tests currently use a fake repository/session; the next validation step is exercising these routes against PostgreSQL with the restricted runtime role and pooled connections.
 
 Migration `0004_authenticated_membership_discovery.sql` adds transaction-local `app.user_id` context and a narrowly scoped RLS SELECT policy that lets a user discover only their own tenant memberships before a tenant has been selected. Membership writes remain restricted to the selected `app.tenant_id`. The API must set `app.user_id` only after global authentication, inside the same transaction, and must never accept it from a client payload.
 
@@ -106,14 +116,14 @@ Do not mark the adapter complete until all of these pass against PostgreSQL 16+ 
 
 - [x] Additive M9 RBAC/invitation migration authored; PostgreSQL CI job now applies M9, M10, and RBAC migrations in order and runs smoke tests.
 - [ ] Global user can have memberships in multiple tenants without duplicate user accounts.
-- [ ] Password authentication uses global auth identity and verified contact points.
+- [x] Password authentication uses global auth identity and verified contact points (API unit tests; PostgreSQL runtime integration still pending).
 - [ ] Suspended users, suspended memberships, and non-active tenants fail closed.
 - [x] Authenticated membership discovery is RLS-scoped to the current global user before tenant selection.
-- [ ] A user cannot select a tenant without an active membership.
+- [x] A user cannot select a tenant without an active membership (API unit test; PostgreSQL runtime integration still pending).
 - [ ] Tenant Admin cannot create platform roles, activate modules, or change plans.
 - [ ] Role assignment is tenant-safe through composite foreign keys.
 - [ ] Invitation acceptance is one-time, expiry-safe, email-verified, and atomic.
-- [ ] RLS denies tenant reads/writes when context is absent or belongs to another tenant.
+- [x] Self-only membership discovery has a PostgreSQL smoke test; full M9 API RLS coverage for all queries remains pending.
 - [ ] Pooled connections do not retain tenant context across requests, commits, or rollbacks.
 - [ ] Global identity data is not exposed by tenant-scoped endpoints.
 - [ ] No prototype `tenant_records` or `device_registrations` tables are created in the canonical database.

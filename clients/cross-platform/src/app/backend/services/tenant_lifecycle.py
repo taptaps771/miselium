@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.backend.security.passwords import hash_password
@@ -286,6 +287,12 @@ def request_tenant_registration(
         ),
         {"user_id": str(user_id)},
     ).mappings().one_or_none()
+    existing_code = session.execute(
+        text("SELECT 1 FROM tenants WHERE code = :code LIMIT 1"),
+        {"code": code},
+    ).first()
+    if existing_code is not None:
+        raise TenantLifecycleError("Tenant code is unavailable.")
     if user is None:
         raise TenantLifecycleError("An active user with a verified email is required.")
 
@@ -461,20 +468,30 @@ def approve_tenant_registration(
         user_id=actor_user_id,
         permission_code="platform.tenants.approve",
     )
-    updated = session.execute(
-        text(
-            """
-            SELECT tenant_id, tenant_code, tenant_name
-              FROM platform_approve_pending_tenant(
-                :actor_user_id, :tenant_id, :reason
-              )
-            """
-        ),
-        {
-            "actor_user_id": str(actor_user_id),
-            "tenant_id": str(tenant_id),
-            "reason": reason.strip(),
-        },
-    ).mappings().one_or_none()
-    if updated is None:
-        raise TenantLifecycleError("Tenant is not pending or does not exist.")
+    try:
+        session.execute(
+            text(
+                """
+                SELECT tenant_id, tenant_code, tenant_name
+                  FROM platform_approve_pending_tenant(
+                    :actor_user_id, :tenant_id, :reason
+                  )
+                """
+            ),
+            {
+                "actor_user_id": str(actor_user_id),
+                "tenant_id": str(tenant_id),
+                "reason": reason.strip(),
+            },
+        ).mappings().one()
+    except DBAPIError as exc:
+        sqlstate = getattr(exc.orig, "sqlstate", getattr(exc.orig, "pgcode", None))
+        if sqlstate == "P0002":
+            raise TenantLifecycleError(
+                "Tenant is not pending or does not exist."
+            ) from None
+        if sqlstate == "42501":
+            raise PlatformPermissionDenied(
+                "Required platform permission is missing."
+            ) from None
+        raise

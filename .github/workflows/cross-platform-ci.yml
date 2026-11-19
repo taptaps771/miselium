@@ -83,14 +83,18 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0001_platform_foundation.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0003_tenant_rbac_invitation_roles.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0004_authenticated_membership_discovery.sql
       - name: Prepare restricted RLS runtime role
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE miselium_app NOLOGIN NOSUPERUSER NOBYPASSRLS"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO miselium_app"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT ON locations, inventory_items TO miselium_app"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT SELECT ON tenant_memberships TO miselium_app"
       - name: Run M9 platform RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
       - name: Run M10 production and inventory RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
       - name: Run M9 tenant RBAC and invitation smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0003_tenant_rbac_invitation_roles_smoke.sql
+      - name: Run M9 authenticated membership discovery smoke test
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0004_authenticated_membership_discovery_smoke.sql

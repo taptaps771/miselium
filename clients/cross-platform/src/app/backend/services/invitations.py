@@ -116,6 +116,8 @@ def create_invitation(
             raise InvitationError(
                 "A pending invitation already exists for this email."
             ) from None
+        if sqlstate == "23503":
+            raise InvitationError("This tenant role cannot be assigned by invitation.") from None
         if sqlstate == "22023":
             raise InvitationError("Invitation details are invalid.") from None
         raise

@@ -80,7 +80,8 @@ QtObject {
         { name: "Pastel Bloom", harmony: "Triadic", vibe: "Pastel", compatibility: "Light", brand: "#8B78B8", accent: "#E9A9B8", background: "#FAF4F8", border: "#E8DCE8" },
         { name: "Neon Pulse", harmony: "Complementary", vibe: "Neon", compatibility: "Dark", brand: "#6C4DDB", accent: "#34E7D2", background: "#15152A", border: "#403B70" },
         { name: "Monochrome Pro", harmony: "Monochromatic", vibe: "Monochrome", compatibility: "Both", brand: "#3D4652", accent: "#8995A3", background: "#F2F4F6", border: "#D5DAE0" },
-        { name: "Corporate Trust", harmony: "Complementary", vibe: "Corporate", compatibility: "Both", brand: "#1F527A", accent: "#D39B48", background: "#F2F6F9", border: "#D2DEE7" }
+        { name: "Corporate Trust", harmony: "Complementary", vibe: "Corporate", compatibility: "Both", brand: "#1F527A", accent: "#D39B48", background: "#F2F6F9", border: "#D2DEE7" },
+        { name: "Citrus Lab", harmony: "Split Complementary", vibe: "Creative", compatibility: "Light", brand: "#597A36", accent: "#D8A83D", background: "#F7F8ED", border: "#DDE3C7" }
     ]
 
     readonly property var activePalette: ({

@@ -57,52 +57,11 @@ Item {
                 }
             }
 
-            Rectangle {
+            ThemeStudio {
                 Layout.fillWidth: true
-                radius: themeController.cardRadius
-                color: themeController.panel
-                border.color: themeController.border
-                implicitHeight: appearanceControls.implicitHeight + 32
-                ColumnLayout {
-                    id: appearanceControls
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 10
-                    Label { text: "TAMPILAN & TEMA"; color: themeController.accent; font.bold: true; font.pixelSize: 11 }
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: width >= 620 ? 2 : 1
-                        columnSpacing: 12
-                        rowSpacing: 8
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Label { text: "Visual style"; color: themeController.muted }
-                            ComboBox { Layout.fillWidth: true; model: ["Industrial Professional", "Glassmorphism", "Minimalist", "Industrial Dark"]; currentIndex: Math.max(0, model.indexOf(themeController.style)); onActivated: themeController.style = currentText }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Label { text: "Color palette"; color: themeController.muted }
-                            ComboBox { Layout.fillWidth: true; model: ["Office Blue", "Teal", "Violet", "Warm Earth", "Forest"]; currentIndex: Math.max(0, model.indexOf(themeController.palette)); onActivated: themeController.palette = currentText }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Label { text: "Appearance"; color: themeController.muted }
-                            ComboBox { Layout.fillWidth: true; model: ["System", "Light", "Dark"]; currentIndex: Math.max(0, model.indexOf(themeController.mode)); onActivated: themeController.mode = currentText }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Label { text: "Custom accent (#RRGGBB)"; color: themeController.muted }
-                            TextField { id: accentHexField; Layout.fillWidth: true; text: themeController.customAccent; placeholderText: "#245EA8"; onEditingFinished: themeController.setCustomAccent(themeController.customAccentEnabled, text) }
-                        }
-                    }
-                    CheckBox { text: "Gunakan warna aksen kustom"; checked: themeController.customAccentEnabled; onToggled: themeController.setCustomAccent(checked, accentHexField.text) }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { Layout.fillWidth: true; text: "Preview: " + themeController.style + " · " + themeController.palette; color: themeController.muted; wrapMode: Text.WordWrap }
-                        Button { text: "Reset"; onClicked: themeController.reset() }
-                    }
-                }
+                themeController: page.themeController
             }
+
             Repeater {
                 model: page.settingsSections
 

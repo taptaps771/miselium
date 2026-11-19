@@ -160,6 +160,25 @@ CREATE TABLE production_machine_cost_allocations (
 CREATE INDEX ix_machine_cost_allocations_batch
     ON production_machine_cost_allocations(tenant_id,batch_id,stage_code,allocated_at);
 
+-- A recipe version marks exactly one base ingredient. Its output_quantity is an
+-- estimate only; it does not create baglog stock. Actual output is captured at press.
+ALTER TABLE recipe_version_items
+    ADD COLUMN is_base_ingredient boolean NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX uq_recipe_version_one_base_ingredient
+    ON recipe_version_items(tenant_id,recipe_version_id)
+    WHERE is_base_ingredient;
+
+-- The production workflow has no separate preparation or cooling stage.
+-- Cooling timestamps/conditions are captured as sterilization metadata/events.
+ALTER TABLE production_batches
+    DROP CONSTRAINT production_batches_status_check;
+ALTER TABLE production_batches
+    ADD CONSTRAINT production_batches_status_check
+    CHECK (status IN (
+        'draft','planned','mixing','press_baglog','sterilization',
+        'inoculation','incubation','ready','on_hold','closed','cancelled'
+    ));
+
 -- Kumbungs already exist in M9 and are referenced by the M10 placement ledger.
 -- Keep the location relation and add a tenant-entered owner label for the initial setup UI.
 ALTER TABLE kumbungs

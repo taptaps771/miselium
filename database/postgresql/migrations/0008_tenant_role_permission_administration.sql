@@ -36,11 +36,15 @@ BEGIN
   RETURN QUERY
     SELECT r.id, r.code, r.name, r.is_system,
            COALESCE(array_agg(DISTINCT p.code::text) FILTER (WHERE p.code IS NOT NULL), ARRAY[]::text[]),
-           count(DISTINCT mra.membership_id)
+           count(DISTINCT active_member.id)
       FROM tenant_roles r
       LEFT JOIN tenant_role_permissions rp ON rp.tenant_id=r.tenant_id AND rp.role_id=r.id
       LEFT JOIN tenant_permissions p ON p.id=rp.permission_id
       LEFT JOIN membership_role_assignments mra ON mra.tenant_id=r.tenant_id AND mra.role_id=r.id
+      LEFT JOIN tenant_memberships active_member
+        ON active_member.tenant_id=mra.tenant_id
+       AND active_member.id=mra.membership_id
+       AND active_member.status='active'
      WHERE r.tenant_id=p_tenant_id
      GROUP BY r.id, r.code, r.name, r.is_system
      ORDER BY r.is_system DESC, r.name, r.code;

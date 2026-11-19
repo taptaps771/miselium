@@ -82,7 +82,7 @@ def test_inactive_global_account_cannot_authenticate() -> None:
 
 def test_tenant_principal_requires_active_account_membership_and_tenant() -> None:
     user_id, tenant_id, membership_id = uuid4(), uuid4(), uuid4()
-    session = FakeSession([{
+    session = FakeSession([], [], [{
         "user_id": user_id,
         "account_status": "active",
         "membership_id": membership_id,
@@ -100,8 +100,10 @@ def test_tenant_principal_requires_active_account_membership_and_tenant() -> Non
 
     assert principal.membership_id == membership_id
     assert principal.tenant_code == "farm-one"
-    assert "tm.status = 'active'" in session.calls[0][0]
-    assert "t.status = 'active'" in session.calls[0][0]
+    assert "tm.status = 'active'" in session.calls[2][0]
+    assert "t.status = 'active'" in session.calls[2][0]
+    assert "set_config('app.user_id'" in session.calls[0][0]
+    assert "set_config('app.tenant_id'" in session.calls[1][0]
 
 
 def test_missing_active_membership_is_denied() -> None:
@@ -126,7 +128,7 @@ def test_rls_context_is_transaction_local() -> None:
 
 def test_permissions_are_derived_from_tenant_role_assignments() -> None:
     tenant_id, membership_id = uuid4(), uuid4()
-    session = FakeSession([{"code": "inventory.read"}, {"code": "production.create"}])
+    session = FakeSession([], [{"code": "inventory.read"}, {"code": "production.create"}])
 
     permissions = M9IdentityRepository(session).effective_permissions(
         tenant_id=tenant_id,
@@ -134,7 +136,7 @@ def test_permissions_are_derived_from_tenant_role_assignments() -> None:
     )
 
     assert permissions == frozenset({"inventory.read", "production.create"})
-    sql, params = session.calls[0]
+    sql, params = session.calls[1]
     assert "membership_role_assignments" in sql
     assert "tenant_role_permissions" in sql
     assert params == {

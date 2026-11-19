@@ -61,8 +61,21 @@ BEGIN
          WHERE tgrelid = 'production_press_outputs'::regclass
            AND tgname = 'production_press_outputs_immutable'
            AND NOT tgisinternal
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+         WHERE tgrelid = 'production_press_outputs'::regclass
+           AND tgname = 'production_press_output_insert_guard'
+           AND NOT tgisinternal
     ) THEN
-        RAISE EXCEPTION 'Press output immutability trigger is missing';
+        RAISE EXCEPTION 'Press output guards are missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+         WHERE tgrelid = 'sterilization_runs'::regclass
+           AND tgname = 'sterilization_run_cycle_guard'
+           AND NOT tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'Sterilization cycle membership guard is missing';
     END IF;
 
     -- Legacy rows are intentionally allowed to have a NULL cycle_id.

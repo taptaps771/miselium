@@ -13,8 +13,7 @@ DECLARE
     v_machine_status varchar(20);
     v_machine_unit uuid;
 BEGIN
-    -- Lock both operational records while validating the output snapshot.
-    -- This prevents a concurrent status/unit change during this insert.
+    -- Validate against the current tenant-scoped batch and machine records.
     SELECT b.status, b.production_unit_id, b.output_unit_id,
            m.machine_type_code, m.status, m.production_unit_id
       INTO v_batch_status, v_batch_unit, v_batch_output_unit,
@@ -24,8 +23,7 @@ BEGIN
         ON m.tenant_id = b.tenant_id
      WHERE b.tenant_id = NEW.tenant_id
        AND b.id = NEW.batch_id
-       AND m.id = NEW.machine_id
-     FOR SHARE OF b, m;
+       AND m.id = NEW.machine_id;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Press output batch and machine must exist in the same tenant'

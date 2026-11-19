@@ -221,6 +221,24 @@ Item {
                             color: themeController.accentAnchor
                             opacity: 0.65
                         }
+                        Rectangle {
+                            id: spotlightSource
+                            width: themeController.glassSpotlightSize
+                            height: width
+                            radius: width / 2
+                            x: Math.max(0, parent.width - width * 0.72)
+                            y: -height * 0.55
+                            color: themeController.spotlight
+                            opacity: themeController.glassGlowEnabled ? 0.85 : 0
+                        }
+                        MultiEffect {
+                            anchors.fill: spotlightSource
+                            source: spotlightSource
+                            blurEnabled: true
+                            blur: 1
+                            blurMax: 64
+                            autoPaddingEnabled: false
+                        }
                     }
                     ShaderEffectSource {
                         id: glassBackdropSource
@@ -249,12 +267,13 @@ Item {
                         color: themeController.glassSurface
                         border.color: themeController.glassBorder
                         border.width: 1
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: parent.radius
-                            color: themeController.spotlight
-                            visible: themeController.glassGlowEnabled
-                            opacity: 0.55
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            shadowEnabled: true
+                            shadowColor: Qt.rgba(0, 0, 0, themeController.glassShadow / 100)
+                            shadowBlur: Math.max(0, Math.min(1, themeController.glassShadow / 80))
+                            shadowVerticalOffset: 8
+                            autoPaddingEnabled: false
                         }
                         ColumnLayout {
                             anchors.fill: parent

@@ -363,7 +363,7 @@ Item {
                         ComboBox {
                             id: vibeBox
                             Layout.fillWidth: true
-                            model: ["All", "Professional", "Minimal", "Creative", "Organic", "Industrial", "Aurora", "Clay", "Brutalist"]
+                            model: ["All", "Professional", "Minimal", "Creative", "Organic", "Industrial", "Aurora", "Clay", "Brutalist", "Retro", "Pastel", "Neon", "Monochrome", "Corporate"]
                             onActivated: studio.vibeFilter = currentText
                         }
                     }

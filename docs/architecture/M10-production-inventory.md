@@ -28,6 +28,7 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 - Every production loss records stage, reason, quantity and disposition. `press_baglog` is a supported loss stage after migration 0013. Recovery creates a new traceable lot and cost record; it never silently restores the source lot.
 - Migration 0013 adds immutable `production_press_outputs` records. Each press pass records processed, good and rejected quantities with the invariant `processed = good + rejected`; only good output is eligible for production-output posting. Migration 0014 strengthens the insert guard: the machine must be active, share the batch production unit, and use the batch output unit, using the tenant-scoped records visible to the runtime role.
 - Material cost comes from actual posted consumption entries. Finalized production cost snapshots freeze material cost, overhead (zero until later allocation), total, output quantity, unit cost and currency. Later overhead is a separate adjustment/allocation, not a rewrite.
+- `src/app/backend/services/production_lifecycle.py` implements guarded batch transitions, immutable events, per-batch idempotency and tenant audit writes. Migration 0015 adds event idempotency columns/index, append-only trigger and narrow runtime grants. Batch closure remains disabled until output/loss/recovery reconciliation is implemented.
 
 ## Application services and API
 
@@ -83,8 +84,10 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] Implement atomic posting, transaction-scoped stock locks, transfer and exact ledger reversal services.
 - [x] Implement production material consumption validation and immutable batch cost links.
 - [x] Add grouped sterilization-cycle schema and immutable press output records with tenant constraints, forced RLS, indexes and schema smoke checks (migration 0013; execution pending).
-- [x] Strengthen press output validation for machine activity, production-unit consistency and output-unit consistency (migration 0014; PostgreSQL execution pending).
-- [ ] Implement production lifecycle transitions, sterilizer/kumbung capacity validation and output/loss/recovery posting orchestration.
+- [x] Strengthen press output validation for machine activity, production-unit consistency and output-unit consistency (migration 0014; user-confirmed PostgreSQL 18.7 disposable database execution passed).
+- [x] Add batch-event idempotency, immutable event history and restricted lifecycle update grants (migration 0015; PostgreSQL execution pending).
+- [x] Implement service-level guarded batch transitions, hold/resume and cancellation checks (M10.1.3; PostgreSQL integration validation pending).
+- [ ] Complete lifecycle transition coverage, API integration, sterilizer/kumbung capacity validation and output/loss/recovery posting orchestration.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
 The remaining production lifecycle orchestration (sterilization, inoculation, incubation, kumbung capacity, output/loss/recovery) and legacy stock/cost reconciliation still require implementation and data-specific verification. A schema commit alone does not prove those behaviors.
@@ -92,7 +95,7 @@ The remaining production lifecycle orchestration (sterilization, inoculation, in
 ## Apply
 
 Run M9 migrations 0001 and 0003–0010 in their documented order, with M10 schema
-migration 0002 applied after 0001. Apply 0011, 0012, 0013 and 0014 in order:
+migration 0002 applied after 0001. Apply 0011, 0012, 0013, 0014 and 0015 in order:
 
 ```sql
 CREATE ROLE miselium_app LOGIN NOSUPERUSER NOBYPASSRLS;
@@ -106,6 +109,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0012_modular_settings_and_machines.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0013_m10_1_2_production_stage_records.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0014_m10_1_2_1_press_output_integrity.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0015_m10_1_3_production_batch_transitions.sql
 ```
 
 Run the smoke test on a disposable database as an administrator with a pre-created non-owner, non-superuser `miselium_app` role:
@@ -122,6 +126,7 @@ Then execute both smoke checks:
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0013_m10_1_2_production_stage_records_smoke.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0014_m10_1_2_1_press_output_integrity_smoke.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0015_m10_1_3_production_batch_transitions_smoke.sql
 ```
 
 The smoke test checks draft-ledger rejection, posting, posted-line immutability, append-only ledger behavior, tenant-scoped reads and cross-tenant write rejection. Do not test RLS as a superuser, table owner or BYPASSRLS role. The script rolls back its fixtures.

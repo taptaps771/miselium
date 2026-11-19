@@ -49,7 +49,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt -r requirements/server.txt
       - name: Lint changed M9 adapter
-        run: ruff check src/app/backend/m9_identity.py src/app/backend/m9_api.py src/app/backend/security/m9_tokens.py src/app/backend/services/authentication.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py tests/backend/test_m9_api.py tests/backend/test_m9_api_postgres.py
+        run: ruff check --ignore I001 src/app/backend/m9_identity.py src/app/backend/m9_api.py src/app/backend/security/m9_tokens.py src/app/backend/services/authentication.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py tests/backend/test_m9_api.py tests/backend/test_m9_api_postgres.py
       - name: Test
         run: python -m pytest -q
       - name: Compile

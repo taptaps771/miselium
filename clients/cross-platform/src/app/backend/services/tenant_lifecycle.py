@@ -381,6 +381,7 @@ def require_platform_permission(
             """
             SELECT 1
               FROM platform_user_roles AS ur
+              JOIN users AS u ON u.id = ur.user_id AND u.status = 'active'
               JOIN platform_role_permissions AS rp ON rp.role_id = ur.role_id
               JOIN platform_permissions AS p ON p.id = rp.permission_id
              WHERE ur.user_id = :user_id AND p.code = :permission

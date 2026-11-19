@@ -98,6 +98,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0006_tenant_invitation_lifecycle.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0007_tenant_membership_administration.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0008_tenant_role_permission_administration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0009_invitation_location_lookup_qualification.sql
       - name: Run M9 platform RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
       - name: Run M10 production and inventory RLS smoke test

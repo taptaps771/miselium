@@ -16,6 +16,7 @@ The canonical schema remains authoritative:
 - M9 global registration and tenant lifecycle: `database/postgresql/migrations/0005_global_registration_tenant_lifecycle.sql`
 - M9 tenant invitation and membership lifecycle: `database/postgresql/migrations/0006_tenant_invitation_lifecycle.sql`
 - M9 tenant membership administration: `database/postgresql/migrations/0007_tenant_membership_administration.sql`
+- M9 tenant role and permission administration: `database/postgresql/migrations/0008_tenant_role_permission_administration.sql`
 - Restricted runtime-role authentication grants: `database/postgresql/roles/0001_miselium_app_auth_read.sql`
 
 The existing M7 backend remains isolated until the adapter and PostgreSQL integration tests are implemented. No existing database or data is to be reset or deleted.
@@ -129,6 +130,26 @@ Security invariants:
 
 PostgreSQL integration coverage exercises member listing, tenant mismatch, permission denial, suspend/reactivate, role change, remove-with-global-account-preservation, and last-owner protections. CI applies migration 0007 after migrations 0001–0006 and runs this test using the restricted `miselium_app` role.
 
+## 4D. Tenant role and permission administration
+
+Migration `0008_tenant_role_permission_administration.sql` adds tenant-scoped PostgreSQL functions for listing roles and the permission catalog, creating custom roles, and replacing a custom role's permission set. System roles (`owner`, `admin`, `member`) are immutable through these endpoints.
+
+API endpoints:
+- `GET /v1/tenants/{tenant_id}/roles`: requires `tenant.roles.read`; returns tenant roles, their effective permission codes, and current member counts.
+- `GET /v1/tenants/{tenant_id}/permissions`: requires `tenant.roles.read`; returns the permission catalog and whether the current actor personally holds each permission.
+- `POST /v1/tenants/{tenant_id}/roles`: requires `tenant.roles.manage`; creates a custom tenant role with no permissions by default.
+- `PUT /v1/tenants/{tenant_id}/roles/{role_id}/permissions`: requires `tenant.roles.manage`; replaces the permission set of a custom role and records before/after state.
+
+Security invariants:
+- All database functions verify transaction-local actor and tenant context and independently check tenant RBAC; API checks are not the only authorization layer.
+- System roles cannot be edited through the custom-role permission endpoint. Built-in owner/admin permissions continue to be managed only through trusted schema/platform migrations.
+- An actor may grant only permissions they personally hold in the same tenant. Permission names supplied by clients are checked against the canonical permission catalog; unknown and duplicate codes are rejected.
+- Custom role creation grants no permissions automatically. Assigning the role to members remains a separate membership-management action.
+- Role creation and permission replacement write tenant audit events with before/after permission snapshots and optional reason.
+- No endpoint grants Platform Admin permissions, plan changes, or module provisioning. Module-aware permissions require a later canonical module-permission mapping and entitlement enforcement design.
+
+PostgreSQL integration coverage verifies custom role creation, catalog visibility, permission replacement, assignment, system-role immutability, and rejection of privilege escalation by a manager who does not personally hold the requested permission. CI applies migration 0008 after migrations 0001–0007 and runs the test using the restricted `miselium_app` role.
+
 ## 5. Invitation adaptation
 
 Migration `0003_tenant_rbac_invitation_roles.sql` adds a required `role_id` to `tenant_invitations` with composite foreign key `(tenant_id, role_id) → tenant_roles(tenant_id, id)`. Existing invitations are conservatively backfilled to the tenant's `member` role. The migration also seeds built-in owner/admin/member roles and a limited tenant permission vocabulary. The tenant-creation service must call `ensure_tenant_default_roles(tenant_id)` inside the same transaction after setting transaction-local tenant context. Existing memberships are backfilled to the least-privileged member role; promotion must be explicit and audited.
@@ -181,6 +202,7 @@ Do not mark the adapter complete until all of these pass against PostgreSQL 16+ 
 - [x] Tenant Admin cannot approve tenant registrations through the platform API; approval requires the global `platform.tenants.approve` permission. Module/plan provisioning endpoints remain platform-only and are not exposed by this API.
 - [x] Initial owner role assignment uses tenant-scoped composite foreign keys in the canonical schema.
 - [x] Invitation acceptance is one-time, expiry-safe, email-verified, and atomic (PostgreSQL integration test).
+- [x] Custom tenant roles and permission assignment enforce actor-held permission boundaries and system-role immutability (PostgreSQL integration test).
 - [x] Self-only membership discovery has a PostgreSQL smoke test; full M9 API RLS coverage for all queries remains pending.
 - [ ] Pooled connections do not retain tenant context across requests, commits, or rollbacks.
 - [x] Registration and tenant approval use global identity endpoints; tenant-scoped `/v1/me` only returns the selected membership context.

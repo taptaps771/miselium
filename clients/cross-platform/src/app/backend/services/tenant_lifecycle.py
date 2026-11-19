@@ -312,6 +312,10 @@ def request_tenant_registration(
     ).scalar_one()
 
     session.execute(
+        text("SELECT set_config('app.user_id', :user_id, true)"),
+        {"user_id": str(user_id)},
+    )
+    session.execute(
         text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
         {"tenant_id": str(tenant_id)},
     )
@@ -414,6 +418,10 @@ def require_platform_permission(
     user_id: UUID,
     permission_code: str,
 ) -> None:
+    session.execute(
+        text("SELECT set_config('app.user_id', :user_id, true)"),
+        {"user_id": str(user_id)},
+    )
     granted = session.execute(
         text(
             """

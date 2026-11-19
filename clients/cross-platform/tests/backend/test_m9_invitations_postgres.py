@@ -219,7 +219,7 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
             member_access = await client.post(
                 "/v1/auth/select-tenant",
                 headers=invitee_headers,
-                json={"tenant_id": tenant_id},
+                json={"tenant_id": str(tenant_id)},
             )
             assert member_access.status_code == 200, member_access.text
             assert "tenant.members.read" in member_access.json()["permissions"]

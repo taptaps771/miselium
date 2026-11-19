@@ -55,7 +55,7 @@ BEGIN
       LEFT JOIN tenant_roles r
         ON r.tenant_id = a.tenant_id AND r.id = a.role_id
      WHERE m.tenant_id = p_tenant_id
-     GROUP BY m.id, u.id, up.display_name, cp.normalized_value
+     GROUP BY m.id, u.id, up.display_name, cp.normalized_value, m.created_at
      ORDER BY up.display_name NULLS LAST, cp.normalized_value NULLS LAST, m.created_at;
 END;
 $m9_members_list$;

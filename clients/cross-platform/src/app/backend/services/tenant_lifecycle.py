@@ -396,7 +396,7 @@ def request_tenant_registration(
             )
             VALUES (
                 :user_id, 'tenant.registration_requested', 'tenant', :tenant_id,
-                'Self-service tenant registration', jsonb_build_object('tenant_code', :code)
+                'Self-service tenant registration', jsonb_build_object('tenant_code', CAST(:code AS text))
             )
             """
         ),

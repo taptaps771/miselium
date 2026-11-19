@@ -155,7 +155,7 @@ def post_inventory_document(
         if document_type == "transfer":
             if source is None or destination is None or source == destination:
                 raise InventoryServiceError("A transfer requires two different warehouses.")
-        elif document_type in {"issue", "production_consumption"}:
+        elif document_type == "issue":
             if source is None or destination is not None:
                 raise InventoryServiceError("This document requires a source warehouse only.")
         elif document_type in {"receipt", "return", "recovery"}:

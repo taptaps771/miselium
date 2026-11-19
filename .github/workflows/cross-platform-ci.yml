@@ -118,6 +118,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m10_inventory_application_services.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0012_modular_settings_and_machines.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0013_m10_1_2_production_stage_records.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0014_m10_1_2_1_press_output_integrity.sql
       - name: Run M9 platform RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
       - name: Run M10 production and inventory RLS smoke test
@@ -126,6 +127,8 @@ jobs:
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0012_modular_settings_smoke.sql
       - name: Run M10.1.2 production stage schema smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0013_m10_1_2_production_stage_records_smoke.sql
+      - name: Run M10.1.2.1 press output integrity smoke test
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0014_m10_1_2_1_press_output_integrity_smoke.sql
       - name: Run M9 tenant RBAC and invitation smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0003_tenant_rbac_invitation_roles_smoke.sql
       - name: Run M9 authenticated membership discovery smoke test

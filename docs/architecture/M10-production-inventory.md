@@ -15,7 +15,7 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 - A transfer creates equal/opposite source and destination entries. Lock stock rows or use serializable transaction semantics to prevent concurrent overselling.
 - Posted documents and their lines are immutable. Database triggers reject line insertion/update/deletion after posting; ledger inserts require a posted parent document and a matching document line, and ledger update/deletion is rejected. Correct through reversal/correction documents, never by editing history.
 - Default policy rejects negative stock. Lot-tracked items require a lot on every relevant movement.
-- Valuation uses a service-owned, explicitly versioned policy (initially moving weighted average by tenant/item/warehouse, with lot traceability). Store NUMERIC values and currency snapshots; never recalculate old values from current prices.
+- Valuation uses moving weighted average by tenant/warehouse/item/lot/currency for outbound movements. Transfers carry the exact source value to the destination. Reversals append exact inverse quantity/value entries from the original ledger; they never revalue history. Store NUMERIC values and currency snapshots.
 
 ## Production contract
 
@@ -27,6 +27,25 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 - Production lots connect outputs to batches and varieties. Kumbung placement is a signed event ledger; capacity and available quantities are checked transactionally.
 - Every production loss records stage, reason, quantity and disposition. Recovery creates a new traceable lot and cost record; it never silently restores the source lot.
 - Material cost comes from actual posted consumption entries. Finalized production cost snapshots freeze material cost, overhead (zero until later allocation), total, output quantity, unit cost and currency. Later overhead is a separate adjustment/allocation, not a rewrite.
+
+## Application services and API
+
+Migration `0011_m10_inventory_application_services.sql` adds the M10 tenant permission vocabulary and restricted runtime grants. Existing owner/admin roles receive inventory and production management permissions; custom roles must be granted only permissions held by their administrator.
+
+The PostgreSQL-backed service module is `clients/cross-platform/src/app/backend/services/inventory.py`:
+
+- `post_inventory_document` validates the document type, warehouse direction, line/lot consistency and stock policy; locks the document and each affected stock key; calculates outbound moving-average value; updates draft snapshots; posts the document; appends ledger rows; and writes an audit event in one caller-owned transaction.
+- `transfer` posting writes equal and opposite quantity/value movements for the source and destination warehouses under the same locks.
+- `reverse_inventory_document` creates a linked reversal document and exact inverse ledger entries. A partial reversal is not supported. A reversal that would make a non-negative item negative is rejected. The original posted timestamp and ledger remain preserved; the original status transitions to `reversed`.
+- `consume_production_materials` posts a production-consumption issue and creates one immutable-cost consumption record per document line, linked to the selected batch.
+
+API routes:
+
+- `POST /v1/tenants/{tenant_id}/inventory/documents/{document_id}/post`
+- `POST /v1/tenants/{tenant_id}/inventory/documents/{document_id}/reverse`
+- `POST /v1/tenants/{tenant_id}/production/batches/{batch_id}/consume-materials`
+
+Adjustment documents are deliberately rejected by the first posting service because the current line schema has no explicit signed adjustment direction. A dedicated adjustment workflow must define and validate that direction rather than infer it from notes or sign conventions.
 
 ## Tenant isolation and authorization
 
@@ -59,7 +78,7 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] Historical material and production cost snapshot contract.
 - [x] PostgreSQL smoke-test script authored.
 - [x] Apply M9 + M10 migrations and run the expanded smoke/invariant test on PostgreSQL 16 using a non-owner, non-superuser runtime role (GitHub Actions run #4: success).
-- [ ] Implement posting, stock locking, lifecycle transitions and capacity validation in application services.
+- [x] Implement atomic posting, transaction-scoped stock locks, transfer and exact ledger reversal services.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
 The remaining application-service and legacy-reconciliation items require application implementation and data-specific verification; a schema commit alone does not prove those behaviors.
@@ -70,6 +89,7 @@ Run M9 first, then:
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m10_inventory_application_services.sql
 ```
 
 Run the smoke test on a disposable database as an administrator with a pre-created non-owner, non-superuser `miselium_app` role:

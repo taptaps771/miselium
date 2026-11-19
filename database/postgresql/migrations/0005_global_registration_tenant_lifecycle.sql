@@ -70,7 +70,7 @@ RETURNS TABLE(tenant_id uuid, tenant_code varchar(40), tenant_name varchar(180))
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $m9_approve$
 DECLARE
   v_tenant_id uuid;
   v_tenant_code varchar(40);
@@ -117,7 +117,7 @@ BEGIN
 
   RETURN QUERY SELECT v_tenant_id, v_tenant_code, v_tenant_name;
 END;
-$;
+$m9_approve$;
 
 REVOKE ALL ON FUNCTION platform_approve_pending_tenant(uuid, uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION platform_approve_pending_tenant(uuid, uuid, text)

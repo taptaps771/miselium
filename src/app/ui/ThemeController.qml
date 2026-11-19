@@ -31,8 +31,10 @@ QtObject {
         "Forest": { accent: "#39734D", accentSoft: "#DDEEE2", accentDark: "#8BC49B" }
     })
 
-    readonly property color accent: customAccentEnabled ? Qt.color(customAccent)
-        : Qt.color(dark ? palettes[palette].accentDark : palettes[palette].accent)
+    readonly property var activePalette: palettes[palette] || palettes["Office Blue"]
+    readonly property bool customAccentValid: /^#[0-9A-Fa-f]{6}$/.test(customAccent)
+    readonly property color accent: customAccentEnabled && customAccentValid ? Qt.color(customAccent)
+        : Qt.color(dark ? activePalette.accentDark : activePalette.accent)
     readonly property color window: dark ? "#171B20" : (glass ? "#EAF0F5" : "#F3F5F7")
     readonly property color surface: glass
         ? (dark ? "#CC252E38" : "#DDFBFDFF")

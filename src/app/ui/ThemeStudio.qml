@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
+import QtQuick.Dialogs
 
 Item {
     id: studio
@@ -199,6 +200,13 @@ Item {
                     }
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    Button { text: "Choose background image"; onClicked: previewImageDialog.open() }
+                    Button { text: "Clear image"; enabled: themeController.glassPreviewImage.length > 0; onClicked: themeController.glassPreviewImage = "" }
+                    Item { Layout.fillWidth: true }
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 190
@@ -206,6 +214,12 @@ Item {
                     clip: true
                     color: themeController.glassPreviewBackground
                     border.color: Qt.lighter(themeController.glassPreviewBackground, 1.25)
+                    Image {
+                        anchors.fill: parent
+                        source: themeController.glassPreviewImage
+                        fillMode: Image.PreserveAspectCrop
+                        visible: themeController.glassPreviewImage.length > 0
+                    }
                     Item {
                         id: previewBackgroundLayer
                         anchors.fill: parent
@@ -255,7 +269,7 @@ Item {
                         source: glassBackdropSource
                         blurEnabled: true
                         blur: Math.max(0, Math.min(1, themeController.glassBlur / 40))
-                        blurMax: 64
+                        blurMax: 40
                         saturation: Math.max(-1, Math.min(1, (themeController.glassSaturation - 100) / 100))
                     }
                     Rectangle {
@@ -623,5 +637,12 @@ Item {
                 Label { Layout.fillWidth: true; text: studio.themeFeedback; color: themeController.success; wrapMode: Text.WordWrap; font.pixelSize: 10 }
             }
         }
+    }
+
+    FileDialog {
+        id: previewImageDialog
+        title: "Pilih gambar latar preview"
+        nameFilters: ["Image files (*.png *.jpg *.jpeg *.webp)"]
+        onAccepted: themeController.glassPreviewImage = selectedFile.toString()
     }
 }

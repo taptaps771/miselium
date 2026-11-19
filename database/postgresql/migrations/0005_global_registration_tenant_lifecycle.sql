@@ -76,6 +76,10 @@ DECLARE
   v_tenant_code varchar(40);
   v_tenant_name varchar(180);
 BEGIN
+  IF current_app_user_id() IS DISTINCT FROM p_actor_user_id THEN
+    RAISE EXCEPTION 'authenticated actor context mismatch' USING ERRCODE = '42501';
+  END IF;
+
   IF length(trim(coalesce(p_reason, ''))) < 3 THEN
     RAISE EXCEPTION 'approval reason is required' USING ERRCODE = '22023';
   END IF;

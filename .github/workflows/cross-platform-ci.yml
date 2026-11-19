@@ -49,7 +49,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt -r requirements/server.txt
       - name: Lint changed M9 adapter
-        run: ruff check --ignore I001 src/app/backend/m9_identity.py src/app/backend/m9_api.py src/app/backend/security/m9_tokens.py src/app/backend/services/authentication.py src/app/backend/services/tenant_lifecycle.py src/app/backend/services/invitations.py src/app/backend/services/membership_admin.py src/app/backend/services/tenant_roles.py tests/backend/test_m9_tenant_roles_postgres.py tests/backend/test_m9_invitations_postgres.py tests/backend/test_m9_membership_admin_postgres.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py tests/backend/test_m9_api.py tests/backend/test_m9_api_postgres.py tests/backend/test_m9_tenant_lifecycle_postgres.py
+        run: ruff check --ignore I001 src/app/backend/m9_identity.py src/app/backend/m9_api.py src/app/backend/security/m9_tokens.py src/app/backend/services/authentication.py src/app/backend/services/tenant_lifecycle.py src/app/backend/services/invitations.py src/app/backend/services/membership_admin.py src/app/backend/services/tenant_roles.py tests/backend/test_m9_tenant_roles_postgres.py tests/backend/test_m9_invitations_postgres.py tests/backend/test_m9_membership_admin_postgres.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py tests/backend/test_m9_api.py tests/backend/test_m9_api_postgres.py tests/backend/test_m9_tenant_lifecycle_postgres.py tests/backend/test_m9_invitation_role_boundary_postgres.py
       - name: Test
         run: python -m pytest -q
       - name: Compile
@@ -99,6 +99,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0007_tenant_membership_administration.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0008_tenant_role_permission_administration.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0009_invitation_location_lookup_qualification.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0010_invitation_role_permission_boundary.sql
       - name: Run M9 platform RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
       - name: Run M10 production and inventory RLS smoke test
@@ -113,4 +114,4 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r clients/cross-platform/requirements/server.txt pytest pytest-asyncio httpx
       - name: Exercise M9 API with restricted PostgreSQL role
-        run: python -m pytest -q clients/cross-platform/tests/backend/test_m9_api_postgres.py clients/cross-platform/tests/backend/test_m9_tenant_lifecycle_postgres.py clients/cross-platform/tests/backend/test_m9_invitations_postgres.py clients/cross-platform/tests/backend/test_m9_membership_admin_postgres.py clients/cross-platform/tests/backend/test_m9_tenant_roles_postgres.py
+        run: python -m pytest -q clients/cross-platform/tests/backend/test_m9_api_postgres.py clients/cross-platform/tests/backend/test_m9_tenant_lifecycle_postgres.py clients/cross-platform/tests/backend/test_m9_invitations_postgres.py clients/cross-platform/tests/backend/test_m9_membership_admin_postgres.py clients/cross-platform/tests/backend/test_m9_tenant_roles_postgres.py clients/cross-platform/tests/backend/test_m9_invitation_role_boundary_postgres.py

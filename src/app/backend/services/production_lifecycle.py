@@ -170,7 +170,7 @@ def _guard_transition(
                   FROM sterilization_run_batches rb
                   JOIN sterilization_runs sr
                     ON sr.tenant_id=rb.tenant_id AND sr.id=rb.sterilization_run_id
-                  JOIN sterilization_cycles sc
+             LEFT JOIN sterilization_cycles sc
                     ON sc.tenant_id=sr.tenant_id AND sc.id=sr.cycle_id
                  WHERE rb.tenant_id=:tenant_id AND rb.batch_id=:batch_id
                 """

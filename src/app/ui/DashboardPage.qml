@@ -5,10 +5,11 @@ import QtQuick.Layouts
 Item {
     id: window
 
-    property color panelColor: "#111c2f"
-    property color borderColor: "#26364d"
-    property color accentColor: "#7dd3fc"
-    property color mutedColor: "#9aabc2"
+    required property var themeController
+    property color panelColor: themeController.panel
+    property color borderColor: themeController.border
+    property color accentColor: themeController.accent
+    property color mutedColor: themeController.muted
     property var hardwareRows: JSON.parse(appController.hardwareCapabilitiesJson)
 
     ScrollView {
@@ -46,7 +47,7 @@ Item {
                     spacing: 3
                     Label {
                         text: appController.appName
-                        color: "#f1f5f9"
+                        color: themeController.text
                         font.pixelSize: 25
                         font.bold: true
                     }
@@ -86,7 +87,7 @@ Item {
                     spacing: 10
                     Label {
                         text: "Fondasi aplikasi aktif"
-                        color: "#f8fafc"
+                        color: themeController.text
                         font.pixelSize: 22
                         font.bold: true
                     }
@@ -99,10 +100,10 @@ Item {
                     }
                     RowLayout {
                         spacing: 8
-                        Label { text: "●"; color: "#6ee7b7" }
+                        Label { text: "●"; color: themeController.success }
                         Label {
                             text: "Lifecycle: " + appController.lifecycleState
-                            color: "#a7f3d0"
+                            color: themeController.success
                             font.pixelSize: 12
                         }
                         Item { Layout.fillWidth: true }
@@ -146,7 +147,7 @@ Item {
                             anchors.margins: 18
                             spacing: 7
                             Label { text: modelData.title; color: mutedColor; font.pixelSize: 12 }
-                            Label { text: modelData.value; color: "#f8fafc"; font.pixelSize: 20; font.bold: true }
+                            Label { text: modelData.value; color: themeController.text; font.pixelSize: 20; font.bold: true }
                             Label { text: modelData.detail; color: mutedColor; font.pixelSize: 11 }
                         }
                     }
@@ -189,7 +190,7 @@ Item {
                             Label {
                                 Layout.fillWidth: true
                                 text: modelData.value
-                                color: "#f8fafc"
+                                color: themeController.text
                                 font.pixelSize: 14
                                 font.bold: true
                                 elide: Text.ElideMiddle
@@ -231,7 +232,7 @@ Item {
                         Layout.fillWidth: true
                         Label {
                             text: "Capability registry · " + appController.hardwarePlatform
-                            color: "#f8fafc"
+                            color: themeController.text
                             font.pixelSize: 14
                             font.bold: true
                         }
@@ -264,7 +265,7 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 58
                                 radius: 10
-                                color: "#0c1728"
+                                color: themeController.panelInset
                                 border.color: borderColor
                                 RowLayout {
                                     anchors.fill: parent
@@ -282,7 +283,7 @@ Item {
                                         Label {
                                             Layout.fillWidth: true
                                             text: modelData.label
-                                            color: "#e2e8f0"
+                                            color: themeController.text
                                             font.pixelSize: 11
                                             elide: Text.ElideRight
                                         }

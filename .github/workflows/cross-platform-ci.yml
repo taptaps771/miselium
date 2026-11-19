@@ -1,4 +1,4 @@
-name: Cross-platform client and M7-M10 application CI
+name: Miselium cross-platform application and PostgreSQL CI
 
 on:
   pull_request:
@@ -17,10 +17,19 @@ on:
       - "database/postgresql/**"
   push:
     branches:
-      - "feat/m0-m8-foundation"
+      - "main"
     paths:
       - "src/**"
-      - ".github/workflows/cross-platform-ci.yml"
+      - "tests/**"
+      - "scripts/**"
+      - "platforms/**"
+      - "pyproject.toml"
+      - "requirements*.txt"
+      - "requirements/**"
+      - "alembic/**"
+      - "alembic.ini"
+      - "main.py"
+      - ".github/workflows/**"
       - "database/postgresql/**"
   workflow_dispatch:
 

@@ -49,7 +49,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt -r requirements/server.txt
       - name: Lint changed M9 adapter
-        run: ruff check src/app/backend/m9_identity.py src/app/backend/m9_api.py src/app/backend/security/m9_tokens.py src/app/backend/services/authentication.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py tests/backend/test_m9_api.py
+        run: ruff check src/app/backend/m9_identity.py src/app/backend/m9_api.py src/app/backend/security/m9_tokens.py src/app/backend/services/authentication.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py tests/backend/test_m9_api.py tests/backend/test_m9_api_postgres.py
       - name: Test
         run: python -m pytest -q
       - name: Compile
@@ -76,6 +76,10 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/miselium_test
+      MISELIUM_ADMIN_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/miselium_test
+      MISELIUM_DATABASE_URL: postgresql+psycopg://miselium_app:ci-miselium-runtime-password@localhost:5432/miselium_test
+      MISELIUM_JWT_SECRET: ci-only-secret-value-not-for-production-123456
+      PYTHONPATH: clients/cross-platform/src
     steps:
       - uses: actions/checkout@v4
       - name: Apply canonical PostgreSQL migrations
@@ -86,7 +90,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0004_authenticated_membership_discovery.sql
       - name: Prepare restricted RLS runtime role
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE miselium_app NOLOGIN NOSUPERUSER NOBYPASSRLS"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE miselium_app LOGIN PASSWORD 'ci-miselium-runtime-password' NOSUPERUSER NOBYPASSRLS"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO miselium_app"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT ON locations, inventory_items TO miselium_app"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/roles/0001_miselium_app_auth_read.sql
@@ -98,3 +102,10 @@ jobs:
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0003_tenant_rbac_invitation_roles_smoke.sql
       - name: Run M9 authenticated membership discovery smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0004_authenticated_membership_discovery_smoke.sql
+
+      - name: Install Python API test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r clients/cross-platform/requirements/server.txt pytest httpx
+      - name: Exercise M9 API with restricted PostgreSQL role
+        run: python -m pytest -q clients/cross-platform/tests/backend/test_m9_api_postgres.py

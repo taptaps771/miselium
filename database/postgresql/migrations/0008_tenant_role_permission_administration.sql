@@ -184,7 +184,7 @@ BEGIN
     JOIN tenant_permissions p ON p.id=rp.permission_id
    WHERE rp.tenant_id=p_tenant_id AND rp.role_id=p_role_id;
 
-  SELECT count(DISTINCT code) INTO v_requested_count FROM unnest(p_permission_codes) AS code;
+  SELECT count(DISTINCT requested.code) INTO v_requested_count FROM unnest(p_permission_codes) AS requested(code);
   SELECT count(DISTINCT p.code) INTO v_known_count
     FROM tenant_permissions p WHERE p.code=ANY(p_permission_codes);
   SELECT count(DISTINCT p.code) INTO v_grantable_count
@@ -209,8 +209,8 @@ BEGIN
   INSERT INTO tenant_role_permissions(tenant_id,role_id,permission_id)
   SELECT p_tenant_id,p_role_id,p.id
     FROM tenant_permissions p WHERE p.code=ANY(p_permission_codes);
-  SELECT COALESCE(array_agg(code ORDER BY code),ARRAY[]::text[]) INTO v_after
-    FROM unnest(p_permission_codes) AS code;
+  SELECT COALESCE(array_agg(requested.code ORDER BY requested.code),ARRAY[]::text[]) INTO v_after
+    FROM unnest(p_permission_codes) AS requested(code);
 
   INSERT INTO tenant_audit_events(tenant_id,actor_user_id,action,entity_type,entity_id,reason,before_data,after_data)
   VALUES(p_tenant_id,p_actor_user_id,'tenant.role.permissions_changed','tenant_role',p_role_id,

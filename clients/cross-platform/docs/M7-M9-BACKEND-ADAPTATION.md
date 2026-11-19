@@ -109,6 +109,12 @@ Invitation tokens are random, single-use, stored only as SHA-256 hashes, and nev
 
 The PostgreSQL functions independently enforce permissions and tenant/role binding; API checks are an additional layer. Runtime access to invitation state transitions is through function EXECUTE grants, not direct table UPDATE privileges. The API requires an injected `invitation_sender(email, raw_token, tenant_name)` delivery callback. Email-provider integration and retry/outbox delivery remain deployment work; the endpoint returns HTTP 503 if no sender is configured.
 
+## 4B.1 Invitation role permission boundary
+
+Migration `0010_invitation_role_permission_boundary.sql` closes the role-escalation path in invitation creation. An inviter must hold `tenant.members.invite` and every permission assigned to the invited tenant role. The database function checks this independently of API validation, locks the tenant and relevant role rows to serialize against concurrent membership/role changes, and re-checks invite authority after acquiring those locks. A role with no permissions remains assignable to an inviter who has invitation authority.
+
+PostgreSQL integration coverage uses the restricted runtime role to prove that an inviter cannot invite into a role containing an unheld permission, while a role within the inviter's grant boundary remains assignable. CI applies migration 0010 after 0009 and runs this regression test.
+
 ## 4C. Tenant membership administration
 
 Migration `0007_tenant_membership_administration.sql` adds PostgreSQL SECURITY DEFINER functions for listing tenant members, changing a member's role, and suspending/reactivating/removing memberships. Runtime users receive EXECUTE only; they cannot directly mutate membership status or role-assignment tables through these workflows.

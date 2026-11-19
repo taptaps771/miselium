@@ -35,6 +35,8 @@ The existing M7 backend remains isolated until the adapter and PostgreSQL integr
 
 ## 3. Authentication and tenant selection
 
+Migration `0004_authenticated_membership_discovery.sql` adds transaction-local `app.user_id` context and a narrowly scoped RLS SELECT policy that lets a user discover only their own tenant memberships before a tenant has been selected. Membership writes remain restricted to the selected `app.tenant_id`. The API must set `app.user_id` only after global authentication, inside the same transaction, and must never accept it from a client payload.
+
 1. Resolve the submitted normalized email to exactly one verified global contact point. Zero matches means invalid credentials. Multiple matches must fail closed and enter an explicit account-resolution flow; do not guess or merge.
 2. Verify the password against the matching `user_auth_identities` row with provider `password`.
 3. Authenticate the global `users` account and reject non-active account status.
@@ -98,6 +100,7 @@ Do not mark the adapter complete until all of these pass against PostgreSQL 16+ 
 - [ ] Global user can have memberships in multiple tenants without duplicate user accounts.
 - [ ] Password authentication uses global auth identity and verified contact points.
 - [ ] Suspended users, suspended memberships, and non-active tenants fail closed.
+- [x] Authenticated membership discovery is RLS-scoped to the current global user before tenant selection.
 - [ ] A user cannot select a tenant without an active membership.
 - [ ] Tenant Admin cannot create platform roles, activate modules, or change plans.
 - [ ] Role assignment is tenant-safe through composite foreign keys.

@@ -44,8 +44,8 @@ BEGIN
   SELECT count(*) INTO v_permission_count
     FROM tenant_role_permissions
    WHERE tenant_id = v_tenant AND role_id = v_admin_role;
-  IF v_permission_count <> 9 THEN
-    RAISE EXCEPTION 'Expected admin to receive 9 tenant permissions, got %', v_permission_count;
+  IF v_permission_count <> 13 THEN
+    RAISE EXCEPTION 'Expected admin to receive 13 tenant permissions, got %', v_permission_count;
   END IF;
 
   SELECT count(*) INTO v_member_write_count

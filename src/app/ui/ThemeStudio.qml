@@ -242,6 +242,7 @@ Item {
                     }
                     ShaderEffectSource {
                         id: glassBackdropSource
+                        anchors.fill: glassPanel
                         sourceItem: previewBackgroundLayer
                         sourceRect: Qt.rect(glassPanel.x, glassPanel.y, glassPanel.width, glassPanel.height)
                         textureSize: Qt.size(Math.max(1, glassPanel.width * 1.5), Math.max(1, glassPanel.height * 1.5))
@@ -436,7 +437,7 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Label { text: "Brand"; color: themeController.muted; font.pixelSize: 10 }
-                        TextField { id: brandField; Layout.fillWidth: true; text: themeController.brand; onEditingFinished: { } }
+                        TextField { id: brandField; Layout.fillWidth: true; text: themeController.brand }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true

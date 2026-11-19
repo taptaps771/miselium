@@ -59,6 +59,14 @@ from app.backend.services.authentication import (
     authenticate_global_user,
     authorize_tenant_context,
 )
+from app.backend.services.inventory import (
+    InventoryServiceError,
+    InventoryPermissionDenied,
+    post_inventory_document,
+    reverse_inventory_document,
+    consume_production_materials,
+)
+
 from app.backend.services.tenant_roles import (
     TenantRoleError,
     TenantRolePermissionDenied,
@@ -178,6 +186,28 @@ class TenantRolePermissionsRequest(BaseModel):
     permission_codes: list[str] = Field(max_length=300)
     reason: str | None = Field(default=None, max_length=1000)
 
+
+
+class InventoryPostingResponse(BaseModel):
+    document_id: UUID
+    status: str
+    ledger_entries: int
+    was_already_posted: bool = False
+
+
+class InventoryReverseRequest(BaseModel):
+    reversal_document_no: str = Field(min_length=1, max_length=60)
+
+
+class ProductionConsumptionRequest(BaseModel):
+    inventory_document_id: UUID
+
+
+class ProductionConsumptionResponse(BaseModel):
+    batch_id: UUID
+    document_id: UUID
+    consumed_lines: int
+    material_cost: str
 
 
 class RegistrationAcceptedResponse(BaseModel):
@@ -912,5 +942,106 @@ def create_m9_app(
             raise HTTPException(status_code=403, detail="Tenant role management permission required.") from None
         except TenantRoleError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    @application.post(
+        "/v1/tenants/{tenant_id}/inventory/documents/{document_id}/post",
+        response_model=InventoryPostingResponse,
+    )
+    def post_inventory(
+        tenant_id: UUID,
+        document_id: UUID,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> InventoryPostingResponse:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.inventory.manage" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Inventory management permission required.")
+        try:
+            result = post_inventory_document(
+                db, actor_user_id=user_id, tenant_id=tenant_id, document_id=document_id
+            )
+        except InventoryPermissionDenied:
+            raise HTTPException(status_code=403, detail="Inventory management permission required.") from None
+        except InventoryServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return InventoryPostingResponse(
+            document_id=result.document_id,
+            status=result.status,
+            ledger_entries=result.ledger_entries,
+            was_already_posted=result.was_already_posted,
+        )
+
+    @application.post(
+        "/v1/tenants/{tenant_id}/inventory/documents/{document_id}/reverse",
+        response_model=InventoryPostingResponse,
+    )
+    def reverse_inventory(
+        tenant_id: UUID,
+        document_id: UUID,
+        payload: InventoryReverseRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> InventoryPostingResponse:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.inventory.manage" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Inventory management permission required.")
+        try:
+            result = reverse_inventory_document(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                reversal_document_no=payload.reversal_document_no,
+            )
+        except InventoryPermissionDenied:
+            raise HTTPException(status_code=403, detail="Inventory management permission required.") from None
+        except InventoryServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return InventoryPostingResponse(
+            document_id=result.document_id,
+            status=result.status,
+            ledger_entries=result.ledger_entries,
+            was_already_posted=result.was_already_posted,
+        )
+
+    @application.post(
+        "/v1/tenants/{tenant_id}/production/batches/{batch_id}/consume-materials",
+        response_model=ProductionConsumptionResponse,
+    )
+    def consume_batch_materials(
+        tenant_id: UUID,
+        batch_id: UUID,
+        payload: ProductionConsumptionRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> ProductionConsumptionResponse:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        required = {"tenant.inventory.manage", "tenant.production.manage"}
+        if not required.issubset(authorization.permissions):
+            raise HTTPException(status_code=403, detail="Production and inventory management permissions required.")
+        try:
+            result = consume_production_materials(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                batch_id=batch_id,
+                inventory_document_id=payload.inventory_document_id,
+            )
+        except InventoryPermissionDenied:
+            raise HTTPException(status_code=403, detail="Production and inventory management permissions required.") from None
+        except InventoryServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return ProductionConsumptionResponse(
+            batch_id=result.batch_id,
+            document_id=result.document_id,
+            consumed_lines=result.consumed_lines,
+            material_cost=str(result.material_cost),
+        )
 
     return application

@@ -31,8 +31,8 @@ Item {
                 Rectangle {
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
-                    radius: 14
-                    color: "#12304a"
+                    radius: themeController.cardRadius
+                    color: themeController.selected
                     Label {
                         anchors.centerIn: parent
                         text: "C"
@@ -59,15 +59,15 @@ Item {
                 }
 
                 Rectangle {
-                    radius: 20
-                    color: "#123b35"
-                    border.color: "#1d6655"
+                    radius: themeController.cardRadius
+                    color: themeController.panelInset
+                    border.color: themeController.border
                     Layout.preferredHeight: 32
                     Layout.preferredWidth: 112
                     Label {
                         anchors.centerIn: parent
                         text: "M3 · CAMERA & SCANNER"
-                        color: "#8be0c1"
+                        color: themeController.success
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -76,7 +76,7 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 20
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: intro.implicitHeight + 44
@@ -139,7 +139,7 @@ Item {
                         required property var modelData
                         Layout.fillWidth: true
                         Layout.preferredHeight: 108
-                        radius: 16
+                        radius: themeController.cardRadius
                         color: panelColor
                         border.color: borderColor
                         ColumnLayout {
@@ -179,7 +179,7 @@ Item {
                         required property var modelData
                         Layout.fillWidth: true
                         Layout.preferredHeight: 104
-                        radius: 16
+                        radius: themeController.cardRadius
                         color: panelColor
                         border.color: borderColor
                         ColumnLayout {
@@ -217,7 +217,7 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 18
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: halContent.implicitHeight + 36
@@ -264,7 +264,7 @@ Item {
                                 required property var modelData
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 58
-                                radius: 10
+                                radius: themeController.controlRadius
                                 color: themeController.panelInset
                                 border.color: borderColor
                                 RowLayout {
@@ -275,7 +275,7 @@ Item {
                                         Layout.preferredWidth: 7
                                         Layout.preferredHeight: 7
                                         radius: 4
-                                        color: "#94a3b8"
+                                        color: themeController.muted
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true

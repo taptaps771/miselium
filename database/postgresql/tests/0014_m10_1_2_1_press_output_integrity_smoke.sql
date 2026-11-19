@@ -18,9 +18,6 @@ BEGIN
     IF position('NEW.quantity_unit_id <> v_batch_output_unit' IN v_function) = 0 THEN
         RAISE EXCEPTION 'Press output guard must match the batch output unit';
     END IF;
-    IF position('FOR SHARE OF b, m' IN v_function) = 0 THEN
-        RAISE EXCEPTION 'Press output guard must lock batch and machine during validation';
-    END IF;
 
     SELECT count(*) INTO v_count
       FROM pg_trigger

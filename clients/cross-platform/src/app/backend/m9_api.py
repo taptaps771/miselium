@@ -140,7 +140,7 @@ class TenantMemberResponse(BaseModel):
     membership_id: UUID
     user_id: UUID
     display_name: str | None
-    email: EmailStr | None
+    email: str | None
     status: str
     joined_at: Any | None
     roles: list[str]

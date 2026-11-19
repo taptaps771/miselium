@@ -150,6 +150,13 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
             assert sent[0][0] == invitee_email
             assert sent[0][2] == "Invitation Integration Tenant"
 
+            privileged_role = await client.post(
+                f"/v1/tenants/{tenant_id}/invitations",
+                headers=inviter_headers,
+                json={"email": f"privileged-{uuid4().hex}@example.com", "role_code": "owner"},
+            )
+            assert privileged_role.status_code == 409
+
             listed = await client.get(
                 f"/v1/tenants/{tenant_id}/invitations",
                 headers=inviter_headers,
@@ -209,5 +216,14 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
             )
             assert member_access.status_code == 200, member_access.text
             assert "tenant.members.read" in member_access.json()["permissions"]
+            member_headers = {
+                "Authorization": f"Bearer {member_access.json()['access_token']}"
+            }
+            member_invite_attempt = await client.post(
+                f"/v1/tenants/{tenant_id}/invitations",
+                headers=member_headers,
+                json={"email": f"forbidden-{uuid4().hex}@example.com", "role_code": "member"},
+            )
+            assert member_invite_attempt.status_code == 403
     finally:
         app.state.session_factory.kw["bind"].dispose()

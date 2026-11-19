@@ -463,6 +463,10 @@ def approve_tenant_registration(
 ) -> None:
     if not reason.strip():
         raise TenantLifecycleError("An approval reason is required.")
+    session.execute(
+        text("SELECT set_config('app.user_id', :user_id, true)"),
+        {"user_id": str(actor_user_id)},
+    )
     require_platform_permission(
         session,
         user_id=actor_user_id,

@@ -75,7 +75,12 @@ QtObject {
         { name: "Brutalist Signal", harmony: "Complementary", vibe: "Brutalist", compatibility: "Both", brand: "#202020", accent: "#E9E13B", background: "#F4F1E8", border: "#B9B4A7" },
         { name: "Arctic", harmony: "Monochromatic", vibe: "Minimal", compatibility: "Both", brand: "#426A83", accent: "#8CB8CC", background: "#F1F7FA", border: "#D1E0E8" },
         { name: "Rose Quartz", harmony: "Analogous", vibe: "Creative", compatibility: "Light", brand: "#A84E72", accent: "#E49AB2", background: "#FBF1F5", border: "#EAD5DF" },
-        { name: "Midnight Mint", harmony: "Triadic", vibe: "Aurora", compatibility: "Dark", brand: "#2B8C83", accent: "#B1E6C9", background: "#152522", border: "#35524C" }
+        { name: "Midnight Mint", harmony: "Triadic", vibe: "Aurora", compatibility: "Dark", brand: "#2B8C83", accent: "#B1E6C9", background: "#152522", border: "#35524C" },
+        { name: "Retro Terminal", harmony: "Monochromatic", vibe: "Retro", compatibility: "Both", brand: "#6B4F3A", accent: "#D9A441", background: "#F5EBDD", border: "#DED1BD" },
+        { name: "Pastel Bloom", harmony: "Triadic", vibe: "Pastel", compatibility: "Light", brand: "#8B78B8", accent: "#E9A9B8", background: "#FAF4F8", border: "#E8DCE8" },
+        { name: "Neon Pulse", harmony: "Complementary", vibe: "Neon", compatibility: "Dark", brand: "#6C4DDB", accent: "#34E7D2", background: "#15152A", border: "#403B70" },
+        { name: "Monochrome Pro", harmony: "Monochromatic", vibe: "Monochrome", compatibility: "Both", brand: "#3D4652", accent: "#8995A3", background: "#F2F4F6", border: "#D5DAE0" },
+        { name: "Corporate Trust", harmony: "Complementary", vibe: "Corporate", compatibility: "Both", brand: "#1F527A", accent: "#D39B48", background: "#F2F6F9", border: "#D2DEE7" }
     ]
 
     readonly property var activePalette: ({

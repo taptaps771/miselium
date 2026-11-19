@@ -18,7 +18,7 @@ QtObject {
     property bool customAccentEnabled: preferences.useCustomAccent
     property string customAccent: preferences.customAccentHex
 
-    readonly property bool dark: mode === "Dark"
+    readonly property bool dark: mode === "Dark" || style === "Industrial Dark"
         || (mode === "System" && Qt.styleHints.colorScheme === Qt.ColorScheme.Dark)
     readonly property bool glass: style === "Glassmorphism"
     readonly property bool minimal: style === "Minimalist"

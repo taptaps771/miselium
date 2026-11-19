@@ -1,0 +1,53 @@
+name: PostgreSQL M10 validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "database/postgresql/**"
+      - ".github/workflows/postgresql-m10.yml"
+  push:
+    branches: [main, "fix/m10-postgres-validation"]
+    paths:
+      - "database/postgresql/**"
+      - ".github/workflows/postgresql-m10.yml"
+  workflow_dispatch:
+
+jobs:
+  postgres-16:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: miselium_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d miselium_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/miselium_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Apply platform foundation (M9)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0001_platform_foundation.sql
+      - name: Apply production and inventory (M10)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
+      - name: Prepare restricted runtime role
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE miselium_app NOLOGIN;
+          GRANT USAGE ON SCHEMA public TO miselium_app;
+          GRANT SELECT, INSERT ON inventory_items TO miselium_app;
+          SQL
+      - name: Run M10 smoke and invariant tests
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql

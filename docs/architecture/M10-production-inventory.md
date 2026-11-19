@@ -13,7 +13,7 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 - `inventory_documents` and lines are drafts until posted. Posting is a single service transaction: validate permissions, tenant, unit conversions, lot requirements, source stock, negative-stock policy and idempotency; write ledger movements; mark the document posted.
 - `inventory_ledger_entries` is the stock source of truth. It stores signed base quantity and signed value per warehouse/lot. Balance views are projections, not mutable stock columns.
 - A transfer creates equal/opposite source and destination entries. Lock stock rows or use serializable transaction semantics to prevent concurrent overselling.
-- Posted documents, their lines, ledger entries and final cost snapshots are immutable. Correct through reversal/correction documents, never by editing history.
+- Posted documents and their lines are immutable. Database triggers reject line insertion/update/deletion after posting; ledger inserts require a posted parent document and a matching document line, and ledger update/deletion is rejected. Correct through reversal/correction documents, never by editing history.
 - Default policy rejects negative stock. Lot-tracked items require a lot on every relevant movement.
 - Valuation uses a service-owned, explicitly versioned policy (initially moving weighted average by tenant/item/warehouse, with lot traceability). Store NUMERIC values and currency snapshots; never recalculate old values from current prices.
 
@@ -58,11 +58,11 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] Production lots, kumbung placement, losses and recovery.
 - [x] Historical material and production cost snapshot contract.
 - [x] PostgreSQL smoke-test script authored.
-- [ ] Apply migration and run tests on PostgreSQL 16+ using a non-owner runtime role.
+- [x] Apply M9 + M10 migrations and run the expanded smoke/invariant test on PostgreSQL 16 using a non-owner, non-superuser runtime role (GitHub Actions run #4: success).
 - [ ] Implement posting, stock locking, lifecycle transitions and capacity validation in application services.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
-The last three items require a running PostgreSQL/application environment; a schema commit does not prove runtime behavior.
+The remaining application-service and legacy-reconciliation items require application implementation and data-specific verification; a schema commit alone does not prove those behaviors.
 
 ## Apply
 
@@ -72,4 +72,18 @@ Run M9 first, then:
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
 ```
 
-Run the smoke test on a disposable database as an administrator with a pre-created non-owner, non-superuser `miselium_app` role. Grant it SELECT and INSERT on `inventory_items`; do not test RLS as a superuser, table owner or BYPASSRLS role.
+Run the smoke test on a disposable database as an administrator with a pre-created non-owner, non-superuser `miselium_app` role:
+
+```sql
+CREATE ROLE miselium_app NOLOGIN;
+GRANT USAGE ON SCHEMA public TO miselium_app;
+GRANT SELECT, INSERT ON inventory_items TO miselium_app;
+```
+
+Then execute:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
+```
+
+The smoke test checks draft-ledger rejection, posting, posted-line immutability, append-only ledger behavior, tenant-scoped reads and cross-tenant write rejection. Do not test RLS as a superuser, table owner or BYPASSRLS role. The script rolls back its fixtures.

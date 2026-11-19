@@ -298,23 +298,67 @@ CREATE TRIGGER inventory_ledger_immutable BEFORE UPDATE OR DELETE ON inventory_l
 CREATE TRIGGER kumbung_placements_immutable BEFORE UPDATE OR DELETE ON kumbung_placements FOR EACH ROW EXECUTE FUNCTION reject_immutable_mutation();
 CREATE TRIGGER production_cost_snapshots_immutable BEFORE UPDATE OR DELETE ON production_cost_snapshots FOR EACH ROW EXECUTE FUNCTION reject_immutable_mutation();
 
+-- Posted documents and their lines are immutable. Lines are guarded on INSERT too,
+-- otherwise a caller could append a new line after posting.
 CREATE OR REPLACE FUNCTION guard_posted_inventory_document()
-RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE v_tenant uuid; v_document uuid; v_status varchar(20);
+RETURNS trigger LANGUAGE plpgsql AS $m10$
+DECLARE v_status varchar(20);
 BEGIN
  IF TG_TABLE_NAME='inventory_documents' THEN
-   IF OLD.status='posted' THEN RAISE EXCEPTION 'Posted inventory document is immutable; reverse it instead' USING ERRCODE='55000'; END IF;
+   IF OLD.status='posted' THEN
+     RAISE EXCEPTION 'Posted inventory document is immutable; reverse it instead' USING ERRCODE='55000';
+   END IF;
    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
  END IF;
- IF TG_OP='DELETE' THEN v_tenant:=OLD.tenant_id; v_document:=OLD.document_id;
- ELSE v_tenant:=NEW.tenant_id; v_document:=NEW.document_id; END IF;
- SELECT status INTO v_status FROM inventory_documents WHERE tenant_id=v_tenant AND id=v_document;
- IF v_status='posted' THEN RAISE EXCEPTION 'Lines of posted inventory document are immutable' USING ERRCODE='55000'; END IF;
+ IF TG_OP IN ('UPDATE','DELETE') THEN
+   SELECT status INTO v_status FROM inventory_documents
+    WHERE tenant_id=OLD.tenant_id AND id=OLD.document_id;
+   IF v_status='posted' THEN
+     RAISE EXCEPTION 'Lines of posted inventory document are immutable' USING ERRCODE='55000';
+   END IF;
+ END IF;
+ IF TG_OP IN ('INSERT','UPDATE') THEN
+   SELECT status INTO v_status FROM inventory_documents
+    WHERE tenant_id=NEW.tenant_id AND id=NEW.document_id;
+   IF v_status='posted' THEN
+     RAISE EXCEPTION 'Lines of posted inventory document are immutable' USING ERRCODE='55000';
+   END IF;
+ END IF;
  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;
-$$;
-CREATE TRIGGER inventory_document_guard BEFORE UPDATE OR DELETE ON inventory_documents FOR EACH ROW EXECUTE FUNCTION guard_posted_inventory_document();
-CREATE TRIGGER inventory_document_line_guard BEFORE UPDATE OR DELETE ON inventory_document_lines FOR EACH ROW EXECUTE FUNCTION guard_posted_inventory_document();
+$m10$;
+CREATE TRIGGER inventory_document_guard
+ BEFORE UPDATE OR DELETE ON inventory_documents
+ FOR EACH ROW EXECUTE FUNCTION guard_posted_inventory_document();
+CREATE TRIGGER inventory_document_line_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON inventory_document_lines
+ FOR EACH ROW EXECUTE FUNCTION guard_posted_inventory_document();
+
+-- Ledger rows may only be appended for a posted document and its matching line.
+-- UPDATE/DELETE remain prohibited by inventory_ledger_immutable above.
+CREATE OR REPLACE FUNCTION guard_inventory_ledger_insert()
+RETURNS trigger LANGUAGE plpgsql AS $m10$
+DECLARE v_status varchar(20); v_line_document uuid; v_line_lot uuid;
+BEGIN
+ SELECT status INTO v_status
+ FROM inventory_documents
+ WHERE tenant_id=NEW.tenant_id AND id=NEW.document_id
+ FOR KEY SHARE;
+ IF v_status IS DISTINCT FROM 'posted' THEN
+   RAISE EXCEPTION 'Inventory ledger entries require a posted document' USING ERRCODE='55000';
+ END IF;
+ SELECT document_id,lot_id INTO v_line_document,v_line_lot
+ FROM inventory_document_lines
+ WHERE tenant_id=NEW.tenant_id AND id=NEW.document_line_id AND item_id=NEW.item_id;
+ IF v_line_document IS DISTINCT FROM NEW.document_id OR v_line_lot IS DISTINCT FROM NEW.lot_id THEN
+   RAISE EXCEPTION 'Ledger entry must match its document line, item and lot' USING ERRCODE='55000';
+ END IF;
+ RETURN NEW;
+END;
+$m10$;
+CREATE TRIGGER inventory_ledger_insert_guard
+ BEFORE INSERT ON inventory_ledger_entries
+ FOR EACH ROW EXECUTE FUNCTION guard_inventory_ledger_insert();
 
 DO $$
 DECLARE t text;

@@ -141,7 +141,7 @@ def post_inventory_document(
         lines = session.execute(
             text(
                 """
-                SELECT l.id, l.line_no, l.item_id, l.lot_id, l.quantity,
+                SELECT l.id, l.line_no, l.item_id, l.lot_id, l.quantity, l.unit_id,
                        l.unit_cost_snapshot, l.currency, l.line_value_snapshot,
                        l.conversion_to_base_snapshot, l.base_quantity,
                        i.is_lot_tracked, i.allow_negative_stock, i.is_active AS item_is_active,
@@ -174,7 +174,7 @@ def post_inventory_document(
                  WHERE tenant_id=:tenant_id AND id = ANY(:warehouse_ids)
                 """
             ),
-            {"tenant_id": str(tenant_id), "warehouse_ids": [str(value) for value in movement_warehouses]},
+            {"tenant_id": str(tenant_id), "warehouse_ids": list(movement_warehouses)},
         ).mappings().all()
         if len(warehouse_rows) != len(movement_warehouses) or any(
             not bool(row["is_active"]) for row in warehouse_rows

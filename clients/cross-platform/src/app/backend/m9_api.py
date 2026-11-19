@@ -101,7 +101,7 @@ def create_m9_app(
     )
     application.state.session_factory = session_factory
 
-    def db_session() -> Generator[Session, None, None]:
+    def db_session() -> Generator[Session]:
         with session_factory() as session:
             try:
                 yield session

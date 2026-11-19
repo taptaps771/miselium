@@ -48,6 +48,14 @@ class PasswordIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class TenantOption:
+    tenant_id: UUID
+    membership_id: UUID
+    tenant_code: str
+    tenant_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class TenantPrincipal:
     user_id: UUID
     tenant_id: UUID
@@ -165,6 +173,40 @@ class M9IdentityRepository:
             tenant_status=str(row["tenant_status"]),
             tenant_code=str(row["tenant_code"]),
             tenant_name=str(row["tenant_name"]),
+        )
+
+    def set_transaction_user(self, user_id: UUID) -> None:
+        """Set authenticated global-user context for self-membership discovery."""
+        self._session.execute(
+            text("SELECT set_config('app.user_id', :user_id, true)"),
+            {"user_id": str(user_id)},
+        )
+
+    def list_active_tenants(self, user_id: UUID) -> tuple[TenantOption, ...]:
+        """List only this authenticated user's active tenant memberships."""
+        self.set_transaction_user(user_id)
+        rows = self._session.execute(
+            text(
+                """
+                SELECT tm.tenant_id, tm.id AS membership_id, t.code, t.name
+                  FROM tenant_memberships AS tm
+                  JOIN tenants AS t ON t.id = tm.tenant_id
+                 WHERE tm.user_id = :user_id
+                   AND tm.status = 'active'
+                   AND t.status = 'active'
+                 ORDER BY t.name, t.code
+                """
+            ),
+            {"user_id": str(user_id)},
+        ).mappings().all()
+        return tuple(
+            TenantOption(
+                tenant_id=UUID(str(row["tenant_id"])),
+                membership_id=UUID(str(row["membership_id"])),
+                tenant_code=str(row["code"]),
+                tenant_name=str(row["name"]),
+            )
+            for row in rows
         )
 
     def set_transaction_tenant(self, tenant_id: UUID) -> None:

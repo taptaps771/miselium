@@ -84,7 +84,7 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [ ] Implement production lifecycle transitions, sterilizer/kumbung capacity validation and output/loss/recovery posting orchestration.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
-The remaining application-service and legacy-reconciliation items require application implementation and data-specific verification; a schema commit alone does not prove those behaviors.
+The remaining production lifecycle orchestration (sterilization, inoculation, incubation, kumbung capacity, output/loss/recovery) and legacy stock/cost reconciliation still require implementation and data-specific verification. A schema commit alone does not prove those behaviors.
 
 ## Apply
 

@@ -1,5 +1,5 @@
 -- Least-privilege read grants required by the M9 login and tenant-selection API.
--- Run after creating the NOLOGIN/NOSUPERUSER/NOBYPASSRLS role miselium_app.
+-- Run after creating the LOGIN/NOSUPERUSER/NOBYPASSRLS role miselium_app.
 BEGIN;
 
 GRANT USAGE ON SCHEMA public TO miselium_app;

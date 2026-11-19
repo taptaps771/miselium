@@ -77,6 +77,9 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Sterilization cycle membership guard is missing';
     END IF;
+    IF NOT has_table_privilege('miselium_app', 'public.sterilizers', 'SELECT') THEN
+      RAISE EXCEPTION 'Runtime role needs SELECT on sterilizers for cycle validation';
+    END IF;
 
     -- Legacy rows are intentionally allowed to have a NULL cycle_id.
     IF (SELECT is_nullable FROM information_schema.columns

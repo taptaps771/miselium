@@ -169,6 +169,7 @@ CREATE POLICY tenant_isolation ON production_press_outputs
 
 GRANT SELECT, INSERT, UPDATE ON sterilization_cycles TO miselium_app;
 GRANT SELECT, INSERT, UPDATE ON sterilization_runs TO miselium_app;
+GRANT SELECT ON sterilizers TO miselium_app;
 GRANT SELECT, INSERT ON production_press_outputs TO miselium_app;
 GRANT SELECT ON production_machines, production_units TO miselium_app;
 GRANT SELECT, INSERT ON production_losses TO miselium_app;

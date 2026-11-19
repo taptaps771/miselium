@@ -37,6 +37,12 @@ The existing M7 backend remains isolated until the adapter and PostgreSQL integr
 
 ## 3. Authentication and tenant selection
 
+The initial service boundary is implemented in `src/app/backend/services/authentication.py`:
+- `authenticate_global_user(...)` verifies one global password identity and returns only that user's active tenant options.
+- `authorize_tenant_context(...)` re-checks active account, tenant, and membership state, then resolves permissions from tenant RBAC.
+
+These services are unit-tested but are not yet wired into the M7 FastAPI routes. The API integration must use a caller-managed transaction and must commit/rollback before returning a pooled connection.
+
 Migration `0004_authenticated_membership_discovery.sql` adds transaction-local `app.user_id` context and a narrowly scoped RLS SELECT policy that lets a user discover only their own tenant memberships before a tenant has been selected. Membership writes remain restricted to the selected `app.tenant_id`. The API must set `app.user_id` only after global authentication, inside the same transaction, and must never accept it from a client payload.
 
 1. Resolve the submitted normalized email to exactly one verified global contact point. Zero matches means invalid credentials. Multiple matches must fail closed and enter an explicit account-resolution flow; do not guess or merge.

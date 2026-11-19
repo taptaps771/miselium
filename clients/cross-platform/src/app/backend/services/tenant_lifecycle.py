@@ -464,13 +464,10 @@ def approve_tenant_registration(
     updated = session.execute(
         text(
             """
-            UPDATE tenants
-               SET status = 'active',
-                   approved_by = :actor_user_id,
-                   approved_at = now(),
-                   approval_reason = :reason
-             WHERE id = :tenant_id AND status = 'pending'
-            RETURNING id, code, name
+            SELECT tenant_id, tenant_code, tenant_name
+              FROM platform_approve_pending_tenant(
+                :actor_user_id, :tenant_id, :reason
+              )
             """
         ),
         {
@@ -481,23 +478,3 @@ def approve_tenant_registration(
     ).mappings().one_or_none()
     if updated is None:
         raise TenantLifecycleError("Tenant is not pending or does not exist.")
-    session.execute(
-        text(
-            """
-            INSERT INTO platform_audit_events(
-                actor_user_id, action, target_type, target_id, reason, metadata
-            )
-            VALUES (
-                :actor, 'tenant.registration_approved', 'tenant', :tenant_id,
-                :reason, jsonb_build_object('tenant_code', :code, 'tenant_name', :name)
-            )
-            """
-        ),
-        {
-            "actor": str(actor_user_id),
-            "tenant_id": str(tenant_id),
-            "reason": reason.strip(),
-            "code": updated["code"],
-            "name": updated["name"],
-        },
-    )

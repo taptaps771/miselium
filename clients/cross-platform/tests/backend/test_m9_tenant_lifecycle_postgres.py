@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DBAPIError
 
 from app.backend.m9_api import create_m9_app
 from app.backend.security.m9_tokens import decode_tenant_selection_token
@@ -135,6 +136,24 @@ async def test_global_registration_tenant_request_and_platform_approval(monkeypa
             )
             assert not_yet_active.status_code == 200
             assert all(item["tenant_id"] != tenant_data["tenant_id"] for item in not_yet_active.json())
+
+            forbidden = await client.get(
+                "/v1/platform/tenants/pending",
+                headers=selection_headers,
+            )
+            assert forbidden.status_code == 403
+
+            # The runtime role cannot directly activate a tenant by SQL.
+            runtime_engine = create_engine(runtime_url)
+            try:
+                with pytest.raises(DBAPIError):
+                    with runtime_engine.begin() as connection:
+                        connection.execute(
+                            text("UPDATE tenants SET status = 'active' WHERE id = :tenant_id"),
+                            {"tenant_id": tenant_data["tenant_id"]},
+                        )
+            finally:
+                runtime_engine.dispose()
 
             _grant_platform_tenant_approval(admin_url, email)
 

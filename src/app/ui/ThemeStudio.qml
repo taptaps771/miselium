@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 
 Item {
     id: studio
@@ -217,7 +218,25 @@ Item {
                         color: themeController.accentAnchor
                         opacity: 0.65
                     }
+                    ShaderEffectSource {
+                        id: glassBackdropSource
+                        sourceItem: previewBackdrop
+                        sourceRect: Qt.rect(glassPanel.x, glassPanel.y, glassPanel.width, glassPanel.height)
+                        textureSize: Qt.size(Math.max(1, glassPanel.width * 1.5), Math.max(1, glassPanel.height * 1.5))
+                        live: true
+                        hideSource: false
+                    }
+                    MultiEffect {
+                        anchors.fill: glassPanel
+                        source: glassBackdropSource
+                        blurEnabled: true
+                        blur: Math.max(0, Math.min(1, themeController.glassBlur / 40))
+                        blurMax: 64
+                        saturation: Math.max(-1, Math.min(1, (themeController.glassSaturation - 100) / 100))
+                    }
                     Rectangle {
+                        id: glassPanel
+                        z: 2
                         anchors.centerIn: parent
                         width: Math.min(parent.width - 32, 360)
                         height: 132

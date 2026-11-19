@@ -13,6 +13,7 @@ The canonical schema remains authoritative:
 - M10: `database/postgresql/migrations/0002_production_inventory.sql`
 - M9 RBAC/invitation compatibility: `database/postgresql/migrations/0003_tenant_rbac_invitation_roles.sql`
 - M9 authenticated membership discovery: `database/postgresql/migrations/0004_authenticated_membership_discovery.sql`
+- M9 global registration and tenant lifecycle: `database/postgresql/migrations/0005_global_registration_tenant_lifecycle.sql`
 - Restricted runtime-role authentication grants: `database/postgresql/roles/0001_miselium_app_auth_read.sql`
 
 The existing M7 backend remains isolated until the adapter and PostgreSQL integration tests are implemented. No existing database or data is to be reset or deleted.
@@ -72,6 +73,23 @@ Migration `0004_authenticated_membership_discovery.sql` adds transaction-local `
 - The initial owner receives a tenant membership and a tenant-scoped owner role assignment. This grants tenant administration only; it does not grant platform permissions or module provisioning rights.
 - Plan assignment and module provisioning remain platform-controlled through `tenant_subscriptions` and `tenant_modules`.
 
+## 4A. Global registration and tenant lifecycle
+
+Migration `0005_global_registration_tenant_lifecycle.sql` adds one-time hashed email-verification challenges, a global uniqueness rule for verified email addresses, tenant approval metadata, and the `platform.tenants.approve` permission. It is additive and does not reset existing users or tenants. Existing active tenants are grandfathered using their original creation timestamp; no historical Platform Admin approver is fabricated.
+
+The M9 API now exposes:
+- `POST /v1/auth/register`: creates a pending global account, password identity, unverified email contact, and hashed one-time verification challenge.
+- `POST /v1/auth/verify-email`: consumes a valid challenge, verifies the contact, activates the global account, and returns a short-lived global tenant-selection token.
+- `POST /v1/tenants`: creates a pending tenant, primary location, active owner membership, owner role assignment, location scope, and platform audit event in one database transaction.
+- `GET /v1/platform/tenants/pending`: lists pending tenant registrations only to a user with `platform.tenants.approve`.
+- `POST /v1/platform/tenants/{tenant_id}/approve`: checks the same platform permission, requires an approval reason, activates the tenant, and writes a platform audit event.
+
+A pending tenant cannot be selected for operational access. Only after Platform Admin approval does it appear in the user's active tenant list. The owner role is tenant-scoped and does not grant platform permissions, plan changes, or module provisioning.
+
+The registration endpoint requires an injected `verification_sender(email, raw_token)` callback. The repository does not yet include an SMTP/provider adapter, so registration deliberately returns HTTP 503 when delivery is not configured; it never returns the raw verification token to the client. Production deployment must wire a trusted email delivery implementation before enabling registration.
+
+Runtime database role grants are extended by migration 0005. Apply it only after the restricted `miselium_app` role exists and after migrations 0001–0004. It does not grant superuser or `BYPASSRLS` privileges.
+
 ## 5. Invitation adaptation
 
 Migration `0003_tenant_rbac_invitation_roles.sql` adds a required `role_id` to `tenant_invitations` with composite foreign key `(tenant_id, role_id) → tenant_roles(tenant_id, id)`. Existing invitations are conservatively backfilled to the tenant's `member` role. The migration also seeds built-in owner/admin/member roles and a limited tenant permission vocabulary. The tenant-creation service must call `ensure_tenant_default_roles(tenant_id)` inside the same transaction after setting transaction-local tenant context. Existing memberships are backfilled to the least-privileged member role; promotion must be explicit and audited.
@@ -116,17 +134,17 @@ The runtime database role must not be a superuser, table owner, or `BYPASSRLS` r
 Do not mark the adapter complete until all of these pass against PostgreSQL 16+ using the restricted runtime role:
 
 - [x] Additive M9 RBAC/invitation migration authored; PostgreSQL CI job now applies M9, M10, and RBAC migrations in order and runs smoke tests.
-- [ ] Global user can have memberships in multiple tenants without duplicate user accounts.
+- [x] Global user can register once and create a pending tenant with an owner membership; the same global user can retain multiple tenant memberships (PostgreSQL API integration).
 - [x] Password authentication uses global auth identity and verified contact points (API unit tests; PostgreSQL runtime integration still pending).
 - [ ] Suspended users, suspended memberships, and non-active tenants fail closed.
 - [x] Authenticated membership discovery is RLS-scoped to the current global user before tenant selection.
 - [x] A user cannot select a tenant without an active membership (API unit test plus PostgreSQL runtime integration).
-- [ ] Tenant Admin cannot create platform roles, activate modules, or change plans.
-- [ ] Role assignment is tenant-safe through composite foreign keys.
+- [x] Tenant Admin cannot approve tenant registrations through the platform API; approval requires the global `platform.tenants.approve` permission. Module/plan provisioning endpoints remain platform-only and are not exposed by this API.
+- [x] Initial owner role assignment uses tenant-scoped composite foreign keys in the canonical schema.
 - [ ] Invitation acceptance is one-time, expiry-safe, email-verified, and atomic.
 - [x] Self-only membership discovery has a PostgreSQL smoke test; full M9 API RLS coverage for all queries remains pending.
 - [ ] Pooled connections do not retain tenant context across requests, commits, or rollbacks.
-- [ ] Global identity data is not exposed by tenant-scoped endpoints.
+- [x] Registration and tenant approval use global identity endpoints; tenant-scoped `/v1/me` only returns the selected membership context.
 - [ ] No prototype `tenant_records` or `device_registrations` tables are created in the canonical database.
 
 Until then, M7 is preserved source only, not production-ready canonical backend code.

@@ -13,8 +13,17 @@ DECLARE
     v_machine uuid := gen_random_uuid();
     v_rate uuid := gen_random_uuid();
 BEGIN
-    INSERT INTO tenants(id,code,name,status)
-    VALUES (v_tenant,'M11-SMOKE-' || substr(v_tenant::text,1,8),'M11 Settings Smoke','active');
+    INSERT INTO tenants(
+        id,code,name,status,approved_at,approval_reason
+    )
+    VALUES (
+        v_tenant,
+        'M11-SMOKE-' || substr(v_tenant::text,1,8),
+        'M11 Settings Smoke',
+        'active',
+        now(),
+        'M11 smoke-test fixture'
+    );
 
     PERFORM set_config('app.tenant_id',v_tenant::text,true);
 

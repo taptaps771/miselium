@@ -185,6 +185,12 @@ def test_m10_inventory_posting_transfer_reversal_and_production_consumption():
                 )
 
         with Session(runtime_engine) as session:
+            def set_tenant_context() -> None:
+                session.execute(
+                    text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                    {"tenant_id": str(tenant_id)},
+                )
+
             receipt = post_inventory_document(
                 session, actor_user_id=actor_id, tenant_id=tenant_id, document_id=receipt_id
             )
@@ -205,6 +211,7 @@ def test_m10_inventory_posting_transfer_reversal_and_production_consumption():
                 session, actor_user_id=actor_id, tenant_id=tenant_id, document_id=transfer_id
             )
             session.commit()
+            set_tenant_context()
 
             source_balance = session.execute(
                 text(
@@ -236,6 +243,7 @@ def test_m10_inventory_posting_transfer_reversal_and_production_consumption():
             )
             assert reversal.ledger_entries == 2
             session.commit()
+            set_tenant_context()
             destination_after_reversal = session.execute(
                 text(
                     """
@@ -262,6 +270,7 @@ def test_m10_inventory_posting_transfer_reversal_and_production_consumption():
             assert consumed.consumed_lines == 1
             assert consumed.material_cost == Decimal("100")
             session.commit()
+            set_tenant_context()
 
             frozen_cost = session.execute(
                 text(

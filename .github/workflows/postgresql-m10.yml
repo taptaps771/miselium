@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "database/postgresql/**"
+      - "src/app/backend/**"
+      - "tests/backend/**"
       - ".github/workflows/postgresql-m10.yml"
   push:
     branches: [main, "fix/m10-postgres-validation"]

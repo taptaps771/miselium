@@ -89,6 +89,20 @@ BEGIN
     RAISE EXCEPTION 'tenant invitation permission required' USING ERRCODE = '42501';
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+      FROM user_contact_points cp
+      JOIN tenant_memberships m ON m.user_id = cp.user_id
+     WHERE cp.contact_type = 'email'
+       AND cp.is_verified IS TRUE
+       AND lower(cp.normalized_value) = lower(trim(p_email_normalized))
+       AND m.tenant_id = p_tenant_id
+       AND m.status IN ('active', 'suspended')
+  ) THEN
+    RAISE EXCEPTION 'user already has a non-invitable membership'
+      USING ERRCODE = '23505';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM tenant_roles r
      WHERE r.tenant_id = p_tenant_id AND r.id = p_role_id

@@ -79,16 +79,26 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] PostgreSQL smoke-test script authored.
 - [x] Apply M9 + M10 migrations and run the expanded smoke/invariant test on PostgreSQL 16 using a non-owner, non-superuser runtime role (GitHub Actions run #4: success).
 - [x] Implement atomic posting, transaction-scoped stock locks, transfer and exact ledger reversal services.
+- [x] Implement production material consumption validation and immutable batch cost links.
+- [ ] Implement production lifecycle transitions, sterilizer/kumbung capacity validation and output/loss/recovery posting orchestration.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
 The remaining application-service and legacy-reconciliation items require application implementation and data-specific verification; a schema commit alone does not prove those behaviors.
 
 ## Apply
 
-Run M9 first, then:
+Run M9 migrations 0001 and 0003–0010 in their documented order, with M10 schema
+migration 0002 applied after 0001. Create the restricted runtime role before
+applying migration 0011:
+
+```sql
+CREATE ROLE miselium_app LOGIN NOSUPERUSER NOBYPASSRLS;
+GRANT USAGE ON SCHEMA public TO miselium_app;
+```
+
+Then apply:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m10_inventory_application_services.sql
 ```
 

@@ -18,6 +18,8 @@ SET search_path = pg_catalog, public, pg_temp
 AS $m9_invite_create$
 DECLARE
   v_id uuid;
+  v_role_code text;
+  v_role_is_system boolean;
 BEGIN
   IF current_app_user_id() IS DISTINCT FROM p_actor_user_id
      OR current_tenant_id() IS DISTINCT FROM p_tenant_id THEN
@@ -65,10 +67,11 @@ BEGIN
      AND m.user_id = p_actor_user_id AND m.status = 'active'
    FOR SHARE OF r;
 
-  PERFORM 1 FROM tenant_roles r
+  SELECT r.code, r.is_system INTO v_role_code, v_role_is_system
+    FROM tenant_roles r
    WHERE r.tenant_id = p_tenant_id AND r.id = p_role_id
    FOR SHARE;
-  IF NOT FOUND THEN
+  IF NOT FOUND OR (v_role_is_system AND v_role_code <> 'member') THEN
     RAISE EXCEPTION 'role is unavailable for invitation' USING ERRCODE = '23503';
   END IF;
 

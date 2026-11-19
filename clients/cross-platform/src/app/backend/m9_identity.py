@@ -135,6 +135,8 @@ class M9IdentityRepository:
         user_id: UUID,
         tenant_id: UUID,
     ) -> TenantPrincipal:
+        self.set_transaction_user(user_id)
+        self.set_transaction_tenant(tenant_id)
         row = self._session.execute(
             text(
                 """
@@ -222,6 +224,7 @@ class M9IdentityRepository:
         tenant_id: UUID,
         membership_id: UUID,
     ) -> frozenset[str]:
+        self.set_transaction_tenant(tenant_id)
         rows = self._session.execute(
             text(
                 """

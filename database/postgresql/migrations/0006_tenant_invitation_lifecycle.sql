@@ -111,12 +111,12 @@ BEGIN
     RAISE EXCEPTION 'role is unavailable for invitation' USING ERRCODE = '23503';
   END IF;
 
-  UPDATE tenant_invitations
+  UPDATE tenant_invitations AS invitation
      SET status = 'expired'
-   WHERE tenant_id = p_tenant_id
-     AND email_normalized = lower(trim(p_email_normalized))
-     AND status = 'pending'
-     AND expires_at <= now();
+   WHERE invitation.tenant_id = p_tenant_id
+     AND invitation.email_normalized = lower(trim(p_email_normalized))
+     AND invitation.status = 'pending'
+     AND invitation.expires_at <= now();
 
   INSERT INTO tenant_invitations(
     tenant_id, email_normalized, token_hash, role_id, status,

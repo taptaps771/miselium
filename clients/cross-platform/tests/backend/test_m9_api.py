@@ -22,7 +22,7 @@ class FakeSession:
         self.committed = False
         self.rolled_back = False
 
-    def __enter__(self) -> "FakeSession":
+    def __enter__(self) -> FakeSession:
         return self
 
     def __exit__(self, *_args: object) -> None:

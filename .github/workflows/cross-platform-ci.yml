@@ -5,12 +5,14 @@ on:
     paths:
       - "clients/cross-platform/**"
       - ".github/workflows/cross-platform-ci.yml"
+      - "database/postgresql/**"
   push:
     branches:
       - "feat/m0-m8-foundation"
     paths:
       - "clients/cross-platform/**"
       - ".github/workflows/cross-platform-ci.yml"
+      - "database/postgresql/**"
   workflow_dispatch:
 
 permissions:
@@ -55,3 +57,40 @@ jobs:
       - name: Validate Android manifest
         if: runner.os == 'Linux'
         run: python scripts/check_android_manifest.py
+
+  postgres-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: miselium_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d miselium_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/miselium_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply canonical PostgreSQL migrations
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0001_platform_foundation.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0003_tenant_rbac_invitation_roles.sql
+      - name: Prepare restricted RLS runtime role
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE miselium_app NOLOGIN NOSUPERUSER NOBYPASSRLS"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO miselium_app"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT ON locations, inventory_items TO miselium_app"
+      - name: Run M9 platform RLS smoke test
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
+      - name: Run M10 production and inventory RLS smoke test
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
+      - name: Run M9 tenant RBAC and invitation smoke test
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0003_tenant_rbac_invitation_roles_smoke.sql

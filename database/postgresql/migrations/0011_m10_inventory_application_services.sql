@@ -94,6 +94,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_document_single_reversal
   ON inventory_documents(tenant_id, reversed_document_id)
   WHERE reversed_document_id IS NOT NULL;
 
+-- A consumption record must be derived from an already-posted batch issue.
+CREATE OR REPLACE FUNCTION guard_production_batch_consumption_insert()
+RETURNS trigger LANGUAGE plpgsql AS $m10$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM inventory_document_lines AS l
+      JOIN inventory_documents AS d
+        ON d.tenant_id=l.tenant_id AND d.id=l.document_id
+      JOIN inventory_ledger_entries AS le
+        ON le.tenant_id=l.tenant_id
+       AND le.document_id=l.document_id
+       AND le.document_line_id=l.id
+      JOIN production_batches AS b
+        ON b.tenant_id=d.tenant_id AND b.id=NEW.batch_id
+     WHERE l.tenant_id=NEW.tenant_id
+       AND l.id=NEW.inventory_document_line_id
+       AND l.item_id=NEW.item_id
+       AND l.base_quantity=NEW.consumed_base_quantity
+       AND l.currency=NEW.currency
+       AND d.document_type='production_consumption'
+       AND d.status='posted'
+       AND d.source_reference_type='production_batch'
+       AND d.source_reference_id=NEW.batch_id
+       AND b.status IN ('planned','mixing')
+       AND le.quantity_delta<0
+       AND abs(le.value_delta)=NEW.material_cost_snapshot
+  ) THEN
+    RAISE EXCEPTION 'Production consumption must match a posted batch issue ledger line'
+      USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$m10$;
+
+CREATE TRIGGER production_batch_consumption_insert_guard
+  BEFORE INSERT ON production_batch_consumptions
+  FOR EACH ROW EXECUTE FUNCTION guard_production_batch_consumption_insert();
+CREATE TRIGGER production_batch_consumptions_immutable
+  BEFORE UPDATE OR DELETE ON production_batch_consumptions
+  FOR EACH ROW EXECUTE FUNCTION reject_immutable_mutation();
+
 -- Restricted runtime role access. RLS remains forced on every tenant-owned table.
 GRANT SELECT, INSERT, UPDATE ON inventory_documents TO miselium_app;
 GRANT SELECT, INSERT, UPDATE ON inventory_document_lines TO miselium_app;

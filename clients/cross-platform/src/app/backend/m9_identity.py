@@ -7,8 +7,8 @@ for the next integration step and must be used with the M9 PostgreSQL schema.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import text

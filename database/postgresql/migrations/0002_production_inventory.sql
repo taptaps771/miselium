@@ -301,8 +301,8 @@ CREATE TRIGGER production_cost_snapshots_immutable BEFORE UPDATE OR DELETE ON pr
 -- Posted documents and their lines are immutable. Lines are guarded on INSERT too,
 -- otherwise a caller could append a new line after posting.
 CREATE OR REPLACE FUNCTION guard_posted_inventory_document()
-RETURNS trigger LANGUAGE plpgsql AS $
-DECLARE v_tenant uuid; v_document uuid; v_status varchar(20);
+RETURNS trigger LANGUAGE plpgsql AS $m10$
+DECLARE v_status varchar(20);
 BEGIN
  IF TG_TABLE_NAME='inventory_documents' THEN
    IF OLD.status='posted' THEN
@@ -326,7 +326,7 @@ BEGIN
  END IF;
  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;
-$;
+$m10$;
 CREATE TRIGGER inventory_document_guard
  BEFORE UPDATE OR DELETE ON inventory_documents
  FOR EACH ROW EXECUTE FUNCTION guard_posted_inventory_document();
@@ -337,7 +337,7 @@ CREATE TRIGGER inventory_document_line_guard
 -- Ledger rows may only be appended for a posted document and its matching line.
 -- UPDATE/DELETE remain prohibited by inventory_ledger_immutable above.
 CREATE OR REPLACE FUNCTION guard_inventory_ledger_insert()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $m10$
 DECLARE v_status varchar(20); v_line_document uuid; v_line_lot uuid;
 BEGIN
  SELECT status INTO v_status
@@ -355,7 +355,7 @@ BEGIN
  END IF;
  RETURN NEW;
 END;
-$;
+$m10$;
 CREATE TRIGGER inventory_ledger_insert_guard
  BEFORE INSERT ON inventory_ledger_entries
  FOR EACH ROW EXECUTE FUNCTION guard_inventory_ledger_insert();

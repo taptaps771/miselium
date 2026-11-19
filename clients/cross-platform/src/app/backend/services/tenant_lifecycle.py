@@ -170,7 +170,7 @@ def register_global_user(
             )
             VALUES (
                 :user_id, 'global_identity.registered', 'global_user', :user_id,
-                jsonb_build_object('email', :email)
+                jsonb_build_object('email', CAST(:email AS text))
             )
             """
         ),

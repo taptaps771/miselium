@@ -49,7 +49,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt -r requirements/server.txt
       - name: Lint changed M9 adapter
-        run: ruff check src/app/backend/m9_identity.py src/app/backend/services/authentication.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py
+        run: ruff check src/app/backend/m9_identity.py src/app/backend/m9_api.py src/app/backend/security/m9_tokens.py src/app/backend/services/authentication.py tests/backend/test_m9_identity_adapter.py tests/backend/test_m9_authentication_service.py tests/backend/test_m9_api.py
       - name: Test
         run: python -m pytest -q
       - name: Compile
@@ -89,7 +89,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE miselium_app NOLOGIN NOSUPERUSER NOBYPASSRLS"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO miselium_app"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT ON locations, inventory_items TO miselium_app"
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT SELECT ON tenant_memberships TO miselium_app"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/roles/0001_miselium_app_auth_read.sql
       - name: Run M9 platform RLS smoke test
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
       - name: Run M10 production and inventory RLS smoke test

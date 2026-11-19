@@ -50,10 +50,13 @@ QtObject {
     property string glassBaseColor: preferences.glassBaseColor
     property string glassPreviewBackground: preferences.glassPreviewBackground
 
-    readonly property bool dark: mode === "Dark" || style === "Industrial Dark"
+    readonly property bool dark: mode === "Dark" || style === "Industrial Dark" || style === "Aurora"
         || (mode === "System" && Qt.styleHints.colorScheme === Qt.ColorScheme.Dark)
     readonly property bool glass: style === "Glassmorphism"
     readonly property bool minimal: style === "Minimalist"
+    readonly property bool clay: style === "Claymorphism"
+    readonly property bool aurora: style === "Aurora"
+    readonly property bool brutalist: style === "Brutalist"
     readonly property bool customAnchorsValid: isHex(brand) && isHex(accentAnchor)
         && isHex(backgroundAnchor) && isHex(borderAnchor)
 
@@ -82,19 +85,19 @@ QtObject {
 
     readonly property color accent: Qt.color(brand)
     readonly property color window: glass ? Qt.color(glassPreviewBackground)
-        : (dark ? "#171B20" : Qt.color(backgroundAnchor))
+        : (dark ? "#171B20" : (clay ? "#F7EEE8" : Qt.color(backgroundAnchor)))
     readonly property color surface: glass ? glassSurface
-        : (dark ? "#22282F" : "#FFFFFF")
+        : (clay ? "#F4E8DF" : (dark ? "#22282F" : "#FFFFFF"))
     readonly property color surfaceAlt: dark ? "#2B333C" : Qt.lighter(Qt.color(backgroundAnchor), 1.025)
     readonly property color sidebar: glass ? glassSurface
         : (dark ? "#202830" : Qt.darker(Qt.color(backgroundAnchor), 1.025))
     readonly property color panel: glass ? glassSurface
-        : (dark ? "#22282F" : "#FFFFFF")
+        : (clay ? "#F4E8DF" : (dark ? "#22282F" : "#FFFFFF"))
     readonly property color panelInset: dark ? "#202830" : Qt.lighter(Qt.color(backgroundAnchor), 1.015)
     readonly property color text: dark ? "#EDF1F5" : "#202A34"
     readonly property color muted: dark ? "#A5B0BB" : "#65717D"
     readonly property color border: glass ? glassBorder
-        : (dark ? "#3A4652" : Qt.color(borderAnchor))
+        : (brutalist ? Qt.color(brand) : (dark ? "#3A4652" : Qt.color(borderAnchor)))
     readonly property color selected: dark ? Qt.darker(accent, 2.2) : Qt.lighter(accent, 1.65)
     readonly property color status: dark ? "#9AA7B3" : "#687582"
     readonly property color success: dark ? "#86D6A2" : "#287A49"
@@ -104,9 +107,9 @@ QtObject {
     readonly property color glassSurface: withAlpha(glassBaseColor, glassOpacity)
     readonly property color glassBorder: withAlpha(glassBaseColor, glassBorderOpacity)
     readonly property color spotlight: withAlpha(glassSpotlightColor, glassSpotlightOpacity)
-    readonly property int cornerRadius: minimal ? 8 : (glass ? glassRadius : 12)
-    readonly property int cardRadius: minimal ? 10 : (glass ? glassRadius + 6 : 16)
-    readonly property int controlRadius: minimal ? 6 : (glass ? Math.max(8, glassRadius - 4) : 8)
+    readonly property int cornerRadius: brutalist ? 0 : (minimal ? 8 : (glass ? glassRadius : 12))
+    readonly property int cardRadius: brutalist ? 0 : (clay ? 22 : (minimal ? 10 : (glass ? glassRadius + 6 : 16)))
+    readonly property int controlRadius: brutalist ? 0 : (minimal ? 6 : (glass ? Math.max(8, glassRadius - 4) : 8))
     readonly property var brandScale: makeScale(brand)
     readonly property real brandTextContrast: contrastRatio(brand, dark ? "#FFFFFF" : "#FFFFFF")
     readonly property bool useHeavyEffects: false
@@ -149,6 +152,10 @@ QtObject {
                 || !isHex(item.background) || !isHex(item.border))
             return false
         palette = item.name
+        if (item.compatibility === "Dark")
+            mode = "Dark"
+        else if (item.compatibility === "Light")
+            mode = "Light"
         brand = item.brand
         accentAnchor = item.accent
         backgroundAnchor = item.background

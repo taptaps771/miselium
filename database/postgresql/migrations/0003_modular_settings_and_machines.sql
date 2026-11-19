@@ -173,6 +173,12 @@ CREATE UNIQUE INDEX uq_recipe_version_one_base_ingredient
 ALTER TABLE production_batches
     DROP CONSTRAINT production_batches_status_check;
 
+-- M10 forces RLS on both tables. Temporarily disable it inside this
+-- owner-controlled migration so the cross-tenant data migration can preserve
+-- every legacy cooling batch; restore ENABLE + FORCE immediately afterwards.
+ALTER TABLE production_batches DISABLE ROW LEVEL SECURITY;
+ALTER TABLE production_batch_events DISABLE ROW LEVEL SECURITY;
+
 -- Preserve the legacy cooling status as an auditable event, then fold the
 -- batch back into the sterilization stage (cooling is no longer a form stage).
 INSERT INTO production_batch_events(
@@ -187,6 +193,11 @@ WHERE status='cooling';
 UPDATE production_batches
 SET status='sterilization', updated_at=now()
 WHERE status='cooling';
+
+ALTER TABLE production_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE production_batches FORCE ROW LEVEL SECURITY;
+ALTER TABLE production_batch_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE production_batch_events FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE production_batches
     ADD CONSTRAINT production_batches_status_check

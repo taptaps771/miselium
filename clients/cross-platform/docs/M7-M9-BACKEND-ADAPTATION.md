@@ -86,6 +86,8 @@ The M9 API now exposes:
 
 A pending tenant cannot be selected for operational access. Only after Platform Admin approval does it appear in the user's active tenant list. The owner role is tenant-scoped and does not grant platform permissions, plan changes, or module provisioning.
 
+Tenant activation is additionally enforced by the `platform_approve_pending_tenant(...)` SECURITY DEFINER function. The runtime role has no direct UPDATE privilege on tenant lifecycle columns; the function re-checks active Platform Admin permission and writes the approval audit event atomically.
+
 The registration endpoint requires an injected `verification_sender(email, raw_token)` callback. The repository does not yet include an SMTP/provider adapter, so registration deliberately returns HTTP 503 when delivery is not configured; it never returns the raw verification token to the client. Production deployment must wire a trusted email delivery implementation before enabling registration.
 
 Runtime database role grants are extended by migration 0005. Apply it only after the restricted `miselium_app` role exists and after migrations 0001–0004. It does not grant superuser or `BYPASSRLS` privileges.

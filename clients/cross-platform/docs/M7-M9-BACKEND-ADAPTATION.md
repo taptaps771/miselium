@@ -15,6 +15,7 @@ The canonical schema remains authoritative:
 - M9 authenticated membership discovery: `database/postgresql/migrations/0004_authenticated_membership_discovery.sql`
 - M9 global registration and tenant lifecycle: `database/postgresql/migrations/0005_global_registration_tenant_lifecycle.sql`
 - M9 tenant invitation and membership lifecycle: `database/postgresql/migrations/0006_tenant_invitation_lifecycle.sql`
+- M9 tenant membership administration: `database/postgresql/migrations/0007_tenant_membership_administration.sql`
 - Restricted runtime-role authentication grants: `database/postgresql/roles/0001_miselium_app_auth_read.sql`
 
 The existing M7 backend remains isolated until the adapter and PostgreSQL integration tests are implemented. No existing database or data is to be reset or deleted.
@@ -107,6 +108,27 @@ Invitation tokens are random, single-use, stored only as SHA-256 hashes, and nev
 
 The PostgreSQL functions independently enforce permissions and tenant/role binding; API checks are an additional layer. Runtime access to invitation state transitions is through function EXECUTE grants, not direct table UPDATE privileges. The API requires an injected `invitation_sender(email, raw_token, tenant_name)` delivery callback. Email-provider integration and retry/outbox delivery remain deployment work; the endpoint returns HTTP 503 if no sender is configured.
 
+## 4C. Tenant membership administration
+
+Migration `0007_tenant_membership_administration.sql` adds PostgreSQL SECURITY DEFINER functions for listing tenant members, changing a member's role, and suspending/reactivating/removing memberships. Runtime users receive EXECUTE only; they cannot directly mutate membership status or role-assignment tables through these workflows.
+
+API endpoints:
+- `GET /v1/tenants/{tenant_id}/members`: requires `tenant.members.read`; returns membership status, global user id, display name, primary email, and assigned tenant role codes.
+- `PATCH /v1/tenants/{tenant_id}/members/{membership_id}/role`: requires `tenant.members.manage`; assigns a tenant-local role by code and records before/after state.
+- `POST /v1/tenants/{tenant_id}/members/{membership_id}/suspend`: suspends an active membership.
+- `POST /v1/tenants/{tenant_id}/members/{membership_id}/reactivate`: reactivates a suspended membership.
+- `POST /v1/tenants/{tenant_id}/members/{membership_id}/remove`: changes an active/suspended membership to `left`; it never deletes the global user account.
+
+Security invariants:
+- Every function verifies transaction-local `app.user_id` and `app.tenant_id`, checks active tenant and actor membership, and independently enforces `tenant.members.read` or `tenant.members.manage`.
+- A tenant manager cannot grant a role containing permissions the actor does not hold. The built-in `owner` role is never assignable through the role-change endpoint; ownership transfer needs a separately audited workflow.
+- All membership administration functions lock the tenant row before state transitions, serializing concurrent owner changes for that tenant.
+- The last active owner cannot be demoted, suspended, or removed. A tenant may temporarily have multiple owners; an owner can be demoted/removed only while another active owner remains.
+- Role changes and status transitions write immutable tenant audit events with reason and before/after state.
+- A tenant-scoped request cannot address a membership in another tenant, even if the caller supplies its UUID.
+
+PostgreSQL integration coverage exercises member listing, tenant mismatch, permission denial, suspend/reactivate, role change, remove-with-global-account-preservation, and last-owner protections. CI applies migration 0007 after migrations 0001–0006 and runs this test using the restricted `miselium_app` role.
+
 ## 5. Invitation adaptation
 
 Migration `0003_tenant_rbac_invitation_roles.sql` adds a required `role_id` to `tenant_invitations` with composite foreign key `(tenant_id, role_id) → tenant_roles(tenant_id, id)`. Existing invitations are conservatively backfilled to the tenant's `member` role. The migration also seeds built-in owner/admin/member roles and a limited tenant permission vocabulary. The tenant-creation service must call `ensure_tenant_default_roles(tenant_id)` inside the same transaction after setting transaction-local tenant context. Existing memberships are backfilled to the least-privileged member role; promotion must be explicit and audited.
@@ -153,12 +175,12 @@ Do not mark the adapter complete until all of these pass against PostgreSQL 16+ 
 - [x] Additive M9 RBAC/invitation migration authored; PostgreSQL CI job now applies M9, M10, and RBAC migrations in order and runs smoke tests.
 - [x] Global user can register once and create a pending tenant with an owner membership; the same global user can retain multiple tenant memberships (PostgreSQL API integration).
 - [x] Password authentication uses global auth identity and verified contact points (API unit tests; PostgreSQL runtime integration still pending).
-- [ ] Suspended users, suspended memberships, and non-active tenants fail closed.
+- [x] Suspended memberships and non-active tenants fail closed in tenant authorization; membership administration transitions are integration-tested.
 - [x] Authenticated membership discovery is RLS-scoped to the current global user before tenant selection.
 - [x] A user cannot select a tenant without an active membership (API unit test plus PostgreSQL runtime integration).
 - [x] Tenant Admin cannot approve tenant registrations through the platform API; approval requires the global `platform.tenants.approve` permission. Module/plan provisioning endpoints remain platform-only and are not exposed by this API.
 - [x] Initial owner role assignment uses tenant-scoped composite foreign keys in the canonical schema.
-- [ ] Invitation acceptance is one-time, expiry-safe, email-verified, and atomic.
+- [x] Invitation acceptance is one-time, expiry-safe, email-verified, and atomic (PostgreSQL integration test).
 - [x] Self-only membership discovery has a PostgreSQL smoke test; full M9 API RLS coverage for all queries remains pending.
 - [ ] Pooled connections do not retain tenant context across requests, commits, or rollbacks.
 - [x] Registration and tenant approval use global identity endpoints; tenant-scoped `/v1/me` only returns the selected membership context.

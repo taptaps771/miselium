@@ -149,6 +149,19 @@ async def test_custom_tenant_roles_and_permission_escalation_guard(monkeypatch):
                 "tenant.members.read",
             }
 
+            self_lockout = await client.put(
+                f"/v1/tenants/{tenant_id}/roles/{role_id}/permissions",
+                headers=member_headers,
+                json={
+                    "permission_codes": [
+                        "tenant.roles.read",
+                        "tenant.members.read",
+                    ],
+                    "reason": "Must not remove the actor's final role administration path",
+                },
+            )
+            assert self_lockout.status_code == 409, self_lockout.text
+
             denied_escalation = await client.put(
                 f"/v1/tenants/{tenant_id}/roles/{role_id}/permissions",
                 headers=member_headers,

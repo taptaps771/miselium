@@ -11,6 +11,8 @@ The current M7 FastAPI backend is a prototype. Its SQLAlchemy metadata and Alemb
 The canonical schema remains authoritative:
 - M9: `database/postgresql/migrations/0001_platform_foundation.sql`
 - M10: `database/postgresql/migrations/0002_production_inventory.sql`
+- M9 RBAC/invitation compatibility: `database/postgresql/migrations/0003_tenant_rbac_invitation_roles.sql`
+- M9 authenticated membership discovery: `database/postgresql/migrations/0004_authenticated_membership_discovery.sql`
 
 The existing M7 backend remains isolated until the adapter and PostgreSQL integration tests are implemented. No existing database or data is to be reset or deleted.
 

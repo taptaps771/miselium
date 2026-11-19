@@ -42,17 +42,9 @@ ALTER TABLE tenants
   ADD COLUMN approval_reason text,
   ADD CONSTRAINT ck_tenant_approval_metadata
     CHECK (
-      (status <> 'active' AND approved_at IS NULL)
-      OR (status = 'active' AND approved_at IS NOT NULL)
+      (approved_by IS NULL AND approved_at IS NULL)
+      OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)
     ) NOT VALID;
-
--- Existing active tenants predate the approval workflow. Keep them valid and
--- mark their lifecycle as grandfathered without fabricating an approver.
-ALTER TABLE tenants DROP CONSTRAINT ck_tenant_approval_metadata;
-ALTER TABLE tenants
-  ADD CONSTRAINT ck_tenant_approval_metadata
-  CHECK (status <> 'active' OR approved_at IS NOT NULL OR approved_by IS NULL)
-  NOT VALID;
 
 INSERT INTO platform_permissions(code, description)
 VALUES (
@@ -79,6 +71,7 @@ GRANT SELECT ON platform_user_roles, platform_roles,
 
 -- RLS still requires transaction-local tenant context for these tenant-owned
 -- inserts; grants do not bypass any row-level policy.
+GRANT SELECT ON tenant_permissions TO miselium_app;
 GRANT SELECT, INSERT ON tenant_memberships, tenant_roles,
   tenant_role_permissions, membership_role_assignments,
   locations, membership_location_scopes TO miselium_app;

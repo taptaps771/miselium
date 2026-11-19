@@ -479,7 +479,8 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 16
                 spacing: 8
-                Label { text: "BRAND SHADE SCALE · 11 STEPS"; color: themeController.accent; font.bold: true; font.pixelSize: 11 }
+                Label { text: "COLOR SCALES · 11 STEPS PER ANCHOR"; color: themeController.accent; font.bold: true; font.pixelSize: 11 }
+                Label { text: "Brand"; color: themeController.muted; font.pixelSize: 10 }
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 2
@@ -488,8 +489,55 @@ Item {
                         delegate: Rectangle {
                             required property color modelData
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 38
+                            Layout.preferredHeight: 28
                             color: modelData
+                            radius: 3
+                        }
+                    }
+                }
+                Label { text: "Accent"; color: themeController.muted; font.pixelSize: 10 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Repeater {
+                        model: themeController.accentScale
+                        delegate: Rectangle {
+                            required property color modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 24
+                            color: modelData
+                            radius: 3
+                        }
+                    }
+                }
+                Label { text: "Background"; color: themeController.muted; font.pixelSize: 10 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Repeater {
+                        model: themeController.backgroundScale
+                        delegate: Rectangle {
+                            required property color modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 24
+                            color: modelData
+                            border.color: themeController.border
+                            radius: 3
+                        }
+                    }
+                }
+                Label { text: "Border"; color: themeController.muted; font.pixelSize: 10 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Repeater {
+                        model: themeController.borderScale
+                        delegate: Rectangle {
+                            required property color modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 24
+                            color: modelData
+                            border.color: themeController.border
                             radius: 3
                         }
                     }

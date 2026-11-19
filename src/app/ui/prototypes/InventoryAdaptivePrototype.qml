@@ -140,12 +140,14 @@ ApplicationWindow {
             }
 
             ScrollView {
+                id: contentScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                contentWidth: availableWidth
                 clip: true
 
                 ColumnLayout {
-                    width: Math.max(0, parent.width)
+                    width: contentScroll.availableWidth
                     spacing: 18
                     anchors.margins: window.compact ? 16 : 28
 

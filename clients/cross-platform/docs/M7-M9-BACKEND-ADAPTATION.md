@@ -144,6 +144,7 @@ Security invariants:
 - All database functions verify transaction-local actor and tenant context and independently check tenant RBAC; API checks are not the only authorization layer.
 - System roles cannot be edited through the custom-role permission endpoint. Built-in owner/admin permissions continue to be managed only through trusted schema/platform migrations.
 - An actor may grant only permissions they personally hold in the same tenant. Permission names supplied by clients are checked against the canonical permission catalog; unknown and duplicate codes are rejected.
+- A role manager cannot remove their own final `tenant.roles.manage` grant; the database function rejects the change atomically to prevent administrative lockout.
 - Custom role creation grants no permissions automatically. Assigning the role to members remains a separate membership-management action.
 - Role creation and permission replacement write tenant audit events with before/after permission snapshots and optional reason.
 - No endpoint grants Platform Admin permissions, plan changes, or module provisioning. Module-aware permissions require a later canonical module-permission mapping and entitlement enforcement design.

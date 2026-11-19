@@ -2,6 +2,11 @@
 -- Adds the runtime privileges and permission vocabulary required by M10 services.
 BEGIN;
 
+INSERT INTO modules(code, name, description, is_available) VALUES
+  ('inventory', 'Inventory', 'Inventory documents, stock ledger and warehouses', true),
+  ('production', 'Production', 'Production batches and material consumption', true)
+ON CONFLICT (code) DO NOTHING;
+
 INSERT INTO tenant_permissions(code, description) VALUES
   ('tenant.inventory.read', 'View inventory items, stock and documents'),
   ('tenant.inventory.manage', 'Create, post and reverse inventory documents'),
@@ -94,7 +99,7 @@ GRANT SELECT, INSERT, UPDATE ON inventory_documents TO miselium_app;
 GRANT SELECT, INSERT, UPDATE ON inventory_document_lines TO miselium_app;
 GRANT SELECT, INSERT ON inventory_ledger_entries TO miselium_app;
 GRANT SELECT ON inventory_items, inventory_item_units, inventory_lots, warehouses TO miselium_app;
-GRANT SELECT ON production_batches TO miselium_app;
+GRANT SELECT ON production_batches, modules, tenant_modules TO miselium_app;
 GRANT SELECT, INSERT ON production_batch_consumptions TO miselium_app;
 GRANT INSERT ON tenant_audit_events TO miselium_app;
 

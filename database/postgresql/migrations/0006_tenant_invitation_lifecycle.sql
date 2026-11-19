@@ -337,9 +337,9 @@ BEGIN
       USING ERRCODE = '23505';
   END IF;
 
-  DELETE FROM membership_role_assignments
-   WHERE tenant_id = v_invitation.tenant_id
-     AND membership_id = v_membership_id;
+  DELETE FROM membership_role_assignments AS assignment
+   WHERE assignment.tenant_id = v_invitation.tenant_id
+     AND assignment.membership_id = v_membership_id;
 
   INSERT INTO membership_role_assignments(
     tenant_id, membership_id, role_id, assigned_by

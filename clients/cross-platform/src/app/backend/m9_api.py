@@ -40,6 +40,14 @@ from app.backend.services.tenant_lifecycle import (
     request_tenant_registration,
     verify_global_email,
 )
+from app.backend.services.invitations import (
+    InvitationError,
+    InvitationPermissionDenied,
+    accept_invitation,
+    create_invitation,
+    list_invitations,
+    revoke_invitation,
+)
 from app.backend.services.authentication import (
     authenticate_global_user,
     authorize_tenant_context,
@@ -72,6 +80,44 @@ class TenantRegistrationRequest(BaseModel):
 
 class TenantApprovalRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
+
+
+class InvitationCreateRequest(BaseModel):
+    email: EmailStr
+    role_code: str = Field(default="member", min_length=2, max_length=60)
+    expires_days: int = Field(default=7, ge=1, le=30)
+
+
+class InvitationRevokeRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class InvitationAcceptRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+
+
+class InvitationResponse(BaseModel):
+    invitation_id: UUID
+    tenant_id: UUID
+    email: EmailStr
+    role_code: str
+    status: str
+    expires_at: Any
+
+
+class InvitationListItemResponse(BaseModel):
+    invitation_id: UUID
+    email: EmailStr
+    status: str
+    role_code: str
+    expires_at: Any
+    created_at: Any
+
+
+class InvitationAcceptedResponse(BaseModel):
+    status: str = "accepted"
+    tenant_id: UUID
+    membership_id: UUID
 
 
 class RegistrationAcceptedResponse(BaseModel):
@@ -149,6 +195,7 @@ def create_m9_app(
     session_factory: sessionmaker[Session] | None = None,
     repository_factory: RepositoryFactory = M9IdentityRepository,
     verification_sender: Callable[[str, str], None] | None = None,
+    invitation_sender: Callable[[str, str, str], None] | None = None,
 ) -> FastAPI:
     """Build M9 API; require PostgreSQL and never fall back to the M7 SQLite DB."""
     if session_factory is None:
@@ -354,6 +401,138 @@ def create_m9_app(
             raise HTTPException(status_code=403, detail="Platform permission required.") from None
         except TenantLifecycleError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    @application.post(
+        "/v1/tenants/{tenant_id}/invitations",
+        response_model=InvitationResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def invite_tenant_member(
+        tenant_id: UUID,
+        payload: InvitationCreateRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> InvitationResponse:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.members.invite" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant invitation permission required.")
+        if invitation_sender is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Tenant invitation delivery is not configured.",
+            )
+        try:
+            invitation = create_invitation(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                email=str(payload.email),
+                role_code=payload.role_code,
+                expires_days=payload.expires_days,
+            )
+            invitation_sender(
+                invitation.email,
+                invitation.raw_token,
+                authorization.principal.tenant_name,
+            )
+        except InvitationPermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant invitation permission required.") from None
+        except InvitationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="Invitation could not be delivered; no invitation was confirmed.",
+            ) from None
+        return InvitationResponse(
+            invitation_id=invitation.invitation_id,
+            tenant_id=invitation.tenant_id,
+            email=invitation.email,
+            role_code=invitation.role_code,
+            status="pending",
+            expires_at=invitation.expires_at,
+        )
+
+    @application.get(
+        "/v1/tenants/{tenant_id}/invitations",
+        response_model=list[InvitationListItemResponse],
+    )
+    def tenant_invitations(
+        tenant_id: UUID,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> list[InvitationListItemResponse]:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if not ({"tenant.members.read", "tenant.members.invite"} & authorization.permissions):
+            raise HTTPException(status_code=403, detail="Tenant membership read permission required.")
+        try:
+            rows = list_invitations(db, actor_user_id=user_id, tenant_id=tenant_id)
+        except InvitationPermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant membership read permission required.") from None
+        return [
+            InvitationListItemResponse(
+                invitation_id=item.invitation_id,
+                email=item.email,
+                status=item.status,
+                role_code=item.role_code,
+                expires_at=item.expires_at,
+                created_at=item.created_at,
+            )
+            for item in rows
+        ]
+
+    @application.post(
+        "/v1/tenants/{tenant_id}/invitations/{invitation_id}/revoke",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def revoke_tenant_invitation(
+        tenant_id: UUID,
+        invitation_id: UUID,
+        payload: InvitationRevokeRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> None:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.members.invite" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant invitation permission required.")
+        try:
+            revoke_invitation(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                invitation_id=invitation_id,
+                reason=payload.reason,
+            )
+        except InvitationPermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant invitation permission required.") from None
+        except InvitationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    @application.post(
+        "/v1/invitations/accept",
+        response_model=InvitationAcceptedResponse,
+    )
+    def accept_tenant_invitation(
+        payload: InvitationAcceptRequest,
+        user_id: UUID = Depends(selection_user),
+        db: Session = Depends(db_session),
+    ) -> InvitationAcceptedResponse:
+        try:
+            accepted = accept_invitation(db, user_id=user_id, token=payload.token)
+        except InvitationPermissionDenied:
+            raise HTTPException(status_code=403, detail="An active verified global account is required.") from None
+        except InvitationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        return InvitationAcceptedResponse(
+            tenant_id=accepted.tenant_id,
+            membership_id=accepted.membership_id,
+        )
 
     @application.post("/v1/auth/login", response_model=GlobalLoginResponse)
     def global_login(

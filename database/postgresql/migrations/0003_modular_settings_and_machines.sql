@@ -172,6 +172,22 @@ CREATE UNIQUE INDEX uq_recipe_version_one_base_ingredient
 -- Cooling timestamps/conditions are captured as sterilization metadata/events.
 ALTER TABLE production_batches
     DROP CONSTRAINT production_batches_status_check;
+
+-- Preserve the legacy cooling status as an auditable event, then fold the
+-- batch back into the sterilization stage (cooling is no longer a form stage).
+INSERT INTO production_batch_events(
+    tenant_id,batch_id,event_type,from_status,to_status,occurred_at,notes,metadata
+)
+SELECT tenant_id,id,'legacy_cooling_status_mapped','cooling','sterilization',now(),
+       'Cooling is now represented by sterilization readiness metadata, not a separate lifecycle stage.',
+       jsonb_build_object('migration','0003_modular_settings_and_machines')
+FROM production_batches
+WHERE status='cooling';
+
+UPDATE production_batches
+SET status='sterilization', updated_at=now()
+WHERE status='cooling';
+
 ALTER TABLE production_batches
     ADD CONSTRAINT production_batches_status_check
     CHECK (status IN (

@@ -212,6 +212,10 @@ def accept_invitation(
 ) -> AcceptedInvitation:
     if not token or len(token) > 256:
         raise InvitationError("Invitation token is invalid.")
+    session.execute(
+        text("SELECT set_config('app.user_id', :user_id, true)"),
+        {"user_id": str(user_id)},
+    )
     try:
         row = session.execute(
             text(

@@ -69,7 +69,7 @@ CREATE OR REPLACE FUNCTION platform_approve_pending_tenant(
 RETURNS TABLE(tenant_id uuid, tenant_code varchar(40), tenant_name varchar(180))
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = pg_catalog, public, pg_temp
 AS $m9_approve$
 DECLARE
   v_tenant_id uuid;

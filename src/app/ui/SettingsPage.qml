@@ -15,10 +15,44 @@ Item {
     property string selectedModuleCode: ""
     property string selectedModuleTitle: ""
     property string selectedModuleDescription: ""
+    property string activeSection: "theme"
 
     // Presentation registry for the Settings shell. Each module owns its
     // implementation/page; adding a module does not change Main.qml navigation.
     property var settingsSections: SettingsRegistry.getSections()
+
+    readonly property bool compact: width < 760
+    readonly property var navItems: {
+        var items = [{ code: "theme", title: "Tema Aplikasi", shortTitle: "Tema" }]
+        for (var i = 0; i < settingsSections.length; ++i) {
+            var section = settingsSections[i]
+            var shortTitle = section.title
+            if (section.code === "operations")
+                shortTitle = "Operasional"
+            else if (section.code === "devices")
+                shortTitle = "Perangkat"
+            else if (section.code === "interface")
+                shortTitle = "Antarmuka"
+            items.push({ code: section.code, title: section.title, shortTitle: shortTitle })
+        }
+        return items
+    }
+    readonly property var activeSections: {
+        if (activeSection === "theme")
+            return []
+        var result = []
+        for (var i = 0; i < settingsSections.length; ++i) {
+            if (settingsSections[i].code === activeSection)
+                result.push(settingsSections[i])
+        }
+        return result
+    }
+
+    onActiveSectionChanged: {
+        selectedModuleCode = ""
+        selectedModuleTitle = ""
+        selectedModuleDescription = ""
+    }
 
     function selectModule(module) {
         selectedModuleCode = module.code
@@ -51,20 +85,70 @@ Item {
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: "Pilih kelompok pengaturan. Setiap modul berdiri sendiri sehingga modul baru dapat ditambahkan tanpa mengubah struktur navigasi utama."
+                    text: "Pilih menu pengaturan. Tema aplikasi dikelola di menu Tema Aplikasi; modul operasional, perangkat, dan antarmuka tetap tersedia di menu masing-masing."
                     color: mutedColor
                     wrapMode: Text.WordWrap
                     font.pixelSize: 13
                 }
             }
 
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: page.compact ? 44 : 48
+                radius: themeController.cardRadius
+                color: themeController.panelInset
+                border.color: page.borderColor
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    spacing: 4
+
+                    Repeater {
+                        model: page.navItems
+
+                        delegate: Button {
+                            id: navButton
+                            objectName: "settingsNavButton"
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            checkable: true
+                            checked: page.activeSection === modelData.code
+                            text: page.compact ? modelData.shortTitle : modelData.title
+                            font.pixelSize: page.compact ? 10 : 12
+                            onClicked: page.activeSection = modelData.code
+                            Accessible.name: modelData.title
+
+                            background: Rectangle {
+                                radius: Math.max(0, themeController.controlRadius - 2)
+                                color: navButton.checked ? themeController.selected : "transparent"
+                                border.color: navButton.checked
+                                              ? themeController.accent : "transparent"
+                            }
+
+                            contentItem: Label {
+                                text: navButton.text
+                                color: navButton.checked
+                                       ? themeController.accent : themeController.text
+                                font: navButton.font
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+            }
+
             ThemeStudio {
                 Layout.fillWidth: true
+                visible: page.activeSection === "theme"
                 themeController: page.themeController
             }
 
             Repeater {
-                model: page.settingsSections
+                model: page.activeSections
 
                 delegate: ColumnLayout {
                     required property var modelData
@@ -146,7 +230,7 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                visible: page.selectedModuleCode !== ""
+                visible: page.activeSection !== "theme" && page.selectedModuleCode !== ""
                 radius: themeController.cardRadius
                 color: themeController.panelInset
                 border.color: page.borderColor

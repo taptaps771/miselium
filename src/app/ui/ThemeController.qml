@@ -14,20 +14,16 @@ QtObject {
         property string backgroundColor: "#F3F6FA"
         property string borderColor: "#D7E0EA"
         property string savedThemesJson: "[]"
-        property real glassBlur: 12
-        property real glassOpacity: 0.15
-        property real glassBorderOpacity: 0.30
-        property real glassRadius: 16
-        property real glassSaturation: 100
-        property real glassShadow: 20
-        property bool glassGlowEnabled: true
-        property real glassSpotlightSize: 300
-        property real glassSpotlightOpacity: 0.15
-        property string glassSpotlightColor: "#FFFFFF"
-        property string glassBaseColor: "#FFFFFF"
-        property string glassPreviewBackground: "#6B83A6"
-        property string glassPreviewImage: ""
     }
+
+    readonly property var availableStyles: [
+        "Industrial Professional",
+        "Minimalist",
+        "Claymorphism",
+        "Aurora",
+        "Brutalist",
+        "Industrial Dark"
+    ]
 
     property string mode: preferences.appearanceMode
     property string style: preferences.visualStyle
@@ -38,24 +34,9 @@ QtObject {
     property string borderAnchor: preferences.borderColor
     property string savedThemesJson: preferences.savedThemesJson
 
-    property real glassBlur: preferences.glassBlur
-    property real glassOpacity: preferences.glassOpacity
-    property real glassBorderOpacity: preferences.glassBorderOpacity
-    property real glassRadius: preferences.glassRadius
-    property real glassSaturation: preferences.glassSaturation
-    property real glassShadow: preferences.glassShadow
-    property bool glassGlowEnabled: preferences.glassGlowEnabled
-    property real glassSpotlightSize: preferences.glassSpotlightSize
-    property real glassSpotlightOpacity: preferences.glassSpotlightOpacity
-    property string glassSpotlightColor: preferences.glassSpotlightColor
-    property string glassBaseColor: preferences.glassBaseColor
-    property string glassPreviewBackground: preferences.glassPreviewBackground
-    property string glassPreviewImage: preferences.glassPreviewImage
-
     readonly property bool dark: mode === "Dark"
         || (mode === "System" && (style === "Industrial Dark" || style === "Aurora"
             || Qt.styleHints.colorScheme === Qt.ColorScheme.Dark))
-    readonly property bool glass: style === "Glassmorphism"
     readonly property bool minimal: style === "Minimalist"
     readonly property bool clay: style === "Claymorphism"
     readonly property bool aurora: style === "Aurora"
@@ -93,28 +74,23 @@ QtObject {
     })
 
     readonly property color accent: Qt.color(brand)
-    readonly property color window: glass ? Qt.color(glassPreviewBackground)
-        : (dark ? (aurora ? "#101421" : "#171B20")
-            : (aurora ? "#F3F1FA" : (clay ? "#F7EEE8" : Qt.color(backgroundAnchor))))
-    readonly property color surface: glass ? glassSurface
-        : (dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
-            : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF")))
+    readonly property color window: dark ? (aurora ? "#101421" : "#171B20")
+        : (aurora ? "#F3F1FA" : (clay ? "#F7EEE8" : Qt.color(backgroundAnchor)))
+    readonly property color surface: dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
+        : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF"))
     readonly property color surfaceAlt: dark ? (aurora ? "#252B40" : "#2B333C")
         : (aurora ? "#EFECF7" : Qt.lighter(Qt.color(backgroundAnchor), 1.025))
-    readonly property color sidebar: glass ? glassSurface
-        : (dark ? (aurora ? "#171D2C" : "#202830")
-            : (aurora ? "#EAE7F5" : Qt.darker(Qt.color(backgroundAnchor), 1.025)))
-    readonly property color panel: glass ? glassSurface
-        : (dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
-            : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF")))
+    readonly property color sidebar: dark ? (aurora ? "#171D2C" : "#202830")
+        : (aurora ? "#EAE7F5" : Qt.darker(Qt.color(backgroundAnchor), 1.025))
+    readonly property color panel: dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
+        : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF"))
     readonly property color panelInset: dark ? (aurora ? "#171D2C" : "#202830")
         : (aurora ? "#EFECF7" : Qt.lighter(Qt.color(backgroundAnchor), 1.015))
     readonly property color text: dark ? "#EDF1F5" : "#202A34"
     readonly property color muted: dark ? "#A5B0BB" : "#65717D"
-    readonly property color border: glass ? glassBorder
-        : (brutalist ? Qt.color(brand)
-            : (dark ? (aurora ? "#3B4764" : "#3A4652")
-                : (aurora ? "#D8D2E8" : Qt.color(borderAnchor))))
+    readonly property color border: brutalist ? Qt.color(brand)
+        : (dark ? (aurora ? "#3B4764" : "#3A4652")
+            : (aurora ? "#D8D2E8" : Qt.color(borderAnchor)))
     readonly property color selected: dark
         ? (aurora ? "#354365" : Qt.darker(accent, 2.2))
         : (aurora ? "#E4DFF1" : Qt.lighter(accent, 1.65))
@@ -123,36 +99,12 @@ QtObject {
     readonly property color warning: dark ? "#F2C36B" : "#986515"
     readonly property color danger: dark ? "#F18B8B" : "#B33B3B"
 
-    readonly property color glassSurface: withAlpha(glassBaseColor, glassOpacity)
-    readonly property color glassBorder: withAlpha(glassBaseColor, glassBorderOpacity)
-    readonly property color spotlight: withAlpha(glassSpotlightColor, glassSpotlightOpacity)
-    readonly property int cornerRadius: brutalist ? 0 : (minimal ? 8 : (glass ? glassRadius : 12))
-    readonly property int cardRadius: brutalist ? 0 : (clay ? 22 : (minimal ? 10 : (glass ? glassRadius + 6 : 16)))
-    readonly property int controlRadius: brutalist ? 0 : (minimal ? 6 : (glass ? Math.max(8, glassRadius - 4) : 8))
-    readonly property var brandScale: makeScale(brand)
-    readonly property var accentScale: makeScale(accentAnchor)
-    readonly property var backgroundScale: makeScale(backgroundAnchor)
-    readonly property var borderScale: makeScale(borderAnchor)
-    readonly property real brandTextContrast: contrastRatio(brand, dark ? "#FFFFFF" : "#FFFFFF")
-    property bool useHeavyEffects: false
+    readonly property int cornerRadius: brutalist ? 0 : (minimal ? 8 : 12)
+    readonly property int cardRadius: brutalist ? 0 : (clay ? 22 : (minimal ? 10 : 16))
+    readonly property int controlRadius: brutalist ? 0 : (minimal ? 6 : 8)
 
     function isHex(value) {
         return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value)
-    }
-
-    function withAlpha(hex, alpha) {
-        var c = Qt.color(isHex(hex) ? hex : "#FFFFFF")
-        return Qt.rgba(c.r, c.g, c.b, Math.max(0, Math.min(1, alpha)))
-    }
-
-    function makeScale(hex) {
-        var c = Qt.color(isHex(hex) ? hex : "#245EA8")
-        return [
-            Qt.lighter(c, 2.55), Qt.lighter(c, 2.15), Qt.lighter(c, 1.8),
-            Qt.lighter(c, 1.5), Qt.lighter(c, 1.25), c,
-            Qt.darker(c, 1.18), Qt.darker(c, 1.4), Qt.darker(c, 1.7),
-            Qt.darker(c, 2.05), Qt.darker(c, 2.45)
-        ]
     }
 
     function luminance(hex) {
@@ -169,11 +121,9 @@ QtObject {
         return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
     }
 
-    function boundedNumber(value, fallback, minimum, maximum) {
-        var parsed = Number(value)
-        if (!isFinite(parsed))
-            return fallback
-        return Math.max(minimum, Math.min(maximum, parsed))
+    function normalizeStyle() {
+        if (availableStyles.indexOf(style) === -1)
+            style = "Industrial Professional"
     }
 
     function applyPalette(item) {
@@ -208,6 +158,24 @@ QtObject {
         return result
     }
 
+    function applyAnchor(anchor, hex) {
+        if (!isHex(hex))
+            return false
+        var normalized = hex.toUpperCase()
+        if (anchor === "brand")
+            brand = normalized
+        else if (anchor === "accent")
+            accentAnchor = normalized
+        else if (anchor === "background")
+            backgroundAnchor = normalized
+        else if (anchor === "border")
+            borderAnchor = normalized
+        else
+            return false
+        palette = "Custom"
+        return true
+    }
+
     function applyCustomAnchors(brandHex, accentHex, backgroundHex, borderHex) {
         if (!isHex(brandHex) || !isHex(accentHex)
                 || !isHex(backgroundHex) || !isHex(borderHex))
@@ -235,16 +203,14 @@ QtObject {
             return false
         var items = savedThemes()
         var snapshot = {
-            name: cleanName, style: style, mode: mode, palette: palette,
-            brand: brand, accent: accentAnchor, background: backgroundAnchor,
-            border: borderAnchor, glassBlur: glassBlur, glassOpacity: glassOpacity,
-            glassBorderOpacity: glassBorderOpacity, glassRadius: glassRadius,
-            glassSaturation: glassSaturation, glassShadow: glassShadow,
-            glassGlowEnabled: glassGlowEnabled, glassSpotlightSize: glassSpotlightSize,
-            glassSpotlightOpacity: glassSpotlightOpacity,
-            glassSpotlightColor: glassSpotlightColor, glassBaseColor: glassBaseColor,
-            glassPreviewBackground: glassPreviewBackground,
-            glassPreviewImage: glassPreviewImage
+            name: cleanName,
+            style: style,
+            mode: mode,
+            palette: palette,
+            brand: brand,
+            accent: accentAnchor,
+            background: backgroundAnchor,
+            border: borderAnchor
         }
         var replaced = false
         for (var i = 0; i < items.length; ++i) {
@@ -267,6 +233,7 @@ QtObject {
             if (item.name !== name)
                 continue
             style = item.style || "Industrial Professional"
+            normalizeStyle()
             mode = item.mode || "System"
             palette = item.palette || "Custom"
             if (isHex(item.brand) && isHex(item.accent)
@@ -276,20 +243,6 @@ QtObject {
                 backgroundAnchor = item.background
                 borderAnchor = item.border
             }
-            glassBlur = boundedNumber(item.glassBlur, 12, 0, 40)
-            glassOpacity = boundedNumber(item.glassOpacity, 0.15, 0.05, 0.85)
-            glassBorderOpacity = boundedNumber(item.glassBorderOpacity, 0.30, 0.05, 1)
-            glassRadius = boundedNumber(item.glassRadius, 16, 0, 40)
-            glassSaturation = boundedNumber(item.glassSaturation, 100, 0, 200)
-            glassShadow = boundedNumber(item.glassShadow, 20, 0, 80)
-            glassGlowEnabled = Boolean(item.glassGlowEnabled)
-            glassSpotlightSize = boundedNumber(item.glassSpotlightSize, 300, 80, 600)
-            glassSpotlightOpacity = boundedNumber(item.glassSpotlightOpacity, 0.15, 0, 0.6)
-            glassSpotlightColor = isHex(item.glassSpotlightColor) ? item.glassSpotlightColor : "#FFFFFF"
-            glassBaseColor = isHex(item.glassBaseColor) ? item.glassBaseColor : "#FFFFFF"
-            glassPreviewBackground = isHex(item.glassPreviewBackground)
-                ? item.glassPreviewBackground : "#6B83A6"
-            glassPreviewImage = typeof item.glassPreviewImage === "string" ? item.glassPreviewImage : ""
             return true
         }
         return false
@@ -305,28 +258,13 @@ QtObject {
         savedThemesJson = JSON.stringify(filtered)
     }
 
-    function resetGlass() {
-        glassBlur = 12
-        glassOpacity = 0.15
-        glassBorderOpacity = 0.30
-        glassRadius = 16
-        glassSaturation = 100
-        glassShadow = 20
-        glassGlowEnabled = true
-        glassSpotlightSize = 300
-        glassSpotlightOpacity = 0.15
-        glassSpotlightColor = "#FFFFFF"
-        glassBaseColor = "#FFFFFF"
-        glassPreviewBackground = "#6B83A6"
-        glassPreviewImage = ""
-    }
-
     function reset() {
         mode = "System"
         style = "Industrial Professional"
         applyPalette(paletteCatalog[0])
-        resetGlass()
     }
+
+    Component.onCompleted: normalizeStyle()
 
     onModeChanged: preferences.appearanceMode = mode
     onStyleChanged: preferences.visualStyle = style
@@ -336,17 +274,4 @@ QtObject {
     onBackgroundAnchorChanged: preferences.backgroundColor = backgroundAnchor
     onBorderAnchorChanged: preferences.borderColor = borderAnchor
     onSavedThemesJsonChanged: preferences.savedThemesJson = savedThemesJson
-    onGlassBlurChanged: preferences.glassBlur = glassBlur
-    onGlassOpacityChanged: preferences.glassOpacity = glassOpacity
-    onGlassBorderOpacityChanged: preferences.glassBorderOpacity = glassBorderOpacity
-    onGlassRadiusChanged: preferences.glassRadius = glassRadius
-    onGlassSaturationChanged: preferences.glassSaturation = glassSaturation
-    onGlassShadowChanged: preferences.glassShadow = glassShadow
-    onGlassGlowEnabledChanged: preferences.glassGlowEnabled = glassGlowEnabled
-    onGlassSpotlightSizeChanged: preferences.glassSpotlightSize = glassSpotlightSize
-    onGlassSpotlightOpacityChanged: preferences.glassSpotlightOpacity = glassSpotlightOpacity
-    onGlassSpotlightColorChanged: preferences.glassSpotlightColor = glassSpotlightColor
-    onGlassBaseColorChanged: preferences.glassBaseColor = glassBaseColor
-    onGlassPreviewBackgroundChanged: preferences.glassPreviewBackground = glassPreviewBackground
-    onGlassPreviewImageChanged: preferences.glassPreviewImage = glassPreviewImage
 }

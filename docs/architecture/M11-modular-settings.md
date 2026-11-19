@@ -18,7 +18,7 @@ M11 seeds three sections:
 | --- | --- |
 | Operasional | Bahan Baku & Persediaan, Mesin Produksi, Kumbung, Preset Adonan |
 | Perangkat | Mesin Fingerprint, IoT |
-| Antarmuka | Tampilan (tema, ukuran huruf, preferensi UI) |
+| Antarmuka | Tema Aplikasi; Preferensi Antarmuka (ukuran huruf, kepadatan, preferensi UI) |
 
 setting_sections and setting_modules are the global catalog. A future module is added by registering a catalog entry and shipping its module implementation. The UI renders only modules available to the platform and allowed for the active tenant. Module availability in this catalog is not a substitute for the existing tenant_modules entitlement system: only Platform Admin provisions commercial application modules.
 

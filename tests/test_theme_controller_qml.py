@@ -9,9 +9,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QSettings, QUrl
-from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
+from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlExpression
 
-THEME_CONTROLLER = Path(__file__).resolve().parents[1] / "src" / "app" / "ui" / "ThemeController.qml"
+UI_DIR = Path(__file__).resolve().parents[1] / "src" / "app" / "ui"
+THEME_CONTROLLER = UI_DIR / "ThemeController.qml"
+SETTINGS_PAGE = UI_DIR / "SettingsPage.qml"
 
 
 @pytest.fixture
@@ -85,30 +87,43 @@ def test_dark_clay_surfaces_keep_text_contrast_and_aurora_has_its_own_tokens(the
     assert controller.property("border").name() == "#d8d2e8"
 
 
-def test_saved_theme_restores_palette_identity_and_image_preview(theme_controller):
+def test_apply_anchor_updates_one_color_and_marks_palette_custom(theme_controller):
     engine, controller = theme_controller
-    controller.setProperty("style", "Glassmorphism")
+    original_brand = controller.property("brand")
+
+    assert evaluate(engine, controller, 'auditController.applyAnchor("brand", "#a1b2c3")') is True
+    assert controller.property("brand") == "#A1B2C3"
+    assert controller.property("palette") == "Custom"
+
+    assert evaluate(engine, controller, 'auditController.applyAnchor("brand", "#12GG56")') is False
+    assert controller.property("brand") == "#A1B2C3"
+    assert controller.property("brand") != original_brand
+    assert evaluate(engine, controller, 'auditController.applyAnchor("unknown", "#112233")') is False
+
+
+def test_saved_theme_restores_palette_identity(theme_controller):
+    engine, controller = theme_controller
+    controller.setProperty("style", "Aurora")
     controller.setProperty("mode", "Dark")
-    controller.setProperty("glassPreviewImage", "file:///tmp/theme-preview.png")
     assert evaluate(engine, controller, 'auditController.applyCustomAnchors("#112233", "#445566", "#778899", "#AABBCC")')
     assert evaluate(engine, controller, 'auditController.saveTheme("Audit Theme")')
 
     controller.setProperty("palette", "Office Blue")
-    controller.setProperty("glassPreviewImage", "")
     assert evaluate(engine, controller, 'auditController.applySavedTheme("Audit Theme")')
     assert controller.property("palette") == "Custom"
     assert controller.property("brand") == "#112233"
-    assert controller.property("glassPreviewImage") == "file:///tmp/theme-preview.png"
+    assert controller.property("style") == "Aurora"
 
-def test_legacy_saved_theme_uses_bounded_glass_defaults(theme_controller):
+
+def test_removed_glassmorphism_style_falls_back_to_default(theme_controller):
     engine, controller = theme_controller
     controller.setProperty(
         "savedThemesJson",
         json.dumps(
             [
                 {
-                    "name": "Legacy",
-                    "style": "Industrial Professional",
+                    "name": "Legacy Glass",
+                    "style": "Glassmorphism",
                     "mode": "Dark",
                     "palette": "Custom",
                     "brand": "#112233",
@@ -122,9 +137,23 @@ def test_legacy_saved_theme_uses_bounded_glass_defaults(theme_controller):
         ),
     )
 
-    assert evaluate(engine, controller, 'auditController.applySavedTheme("Legacy")')
-    assert controller.property("glassBlur") == 40
-    assert controller.property("glassOpacity") == 0.05
-    assert controller.property("glassBorderOpacity") == 0.30
-    assert controller.property("glassRadius") == 16
-    assert controller.property("glassSaturation") == 100
+    assert evaluate(engine, controller, 'auditController.applySavedTheme("Legacy Glass")')
+    assert controller.property("style") == "Industrial Professional"
+    assert controller.property("brand") == "#112233"
+    assert evaluate(engine, controller, 'auditController.availableStyles.indexOf("Glassmorphism")') == -1
+
+
+def test_settings_page_exposes_theme_application_menu(theme_controller):
+    engine, controller = theme_controller
+    component = QQmlComponent(engine, QUrl.fromLocalFile(str(SETTINGS_PAGE)))
+    page = component.createWithInitialProperties({
+        "themeController": controller,
+        "width": 1180,
+        "height": 820,
+    })
+    assert page is not None, [error.toString() for error in component.errors()]
+    assert page.property("activeSection") == "theme"
+
+    nav_items = page.property("navItems").toVariant()
+    assert nav_items[0]["code"] == "theme"
+    assert nav_items[0]["title"] == "Tema Aplikasi"

@@ -14,7 +14,6 @@ ApplicationWindow {
 
     ThemeController {
         id: theme
-        useHeavyEffects: !window.compact && Qt.platform.os !== "android"
     }
 
     readonly property bool compact: width < 720

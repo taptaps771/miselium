@@ -1,8 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Effects
-import QtQuick.Dialogs
 
 Item {
     id: studio
@@ -13,6 +11,9 @@ Item {
     property string compatibilityFilter: "Any"
     property string paletteFeedback: ""
     property string themeFeedback: ""
+
+    readonly property var filteredPalettes: themeController.filterPalettes(
+        harmonyFilter, vibeFilter, compatibilityFilter)
 
     implicitHeight: studioContent.implicitHeight
 
@@ -55,267 +56,45 @@ Item {
                         Layout.fillWidth: true
                         Label { text: "Visual style"; color: themeController.muted }
                         ComboBox {
+                            id: styleBox
                             Layout.fillWidth: true
-                            model: ["Industrial Professional", "Glassmorphism", "Minimalist",
-                                "Claymorphism", "Aurora", "Brutalist", "Industrial Dark"]
-                            currentIndex: Math.max(0, model.indexOf(themeController.style))
+                            model: themeController.availableStyles
+                            currentIndex: 0
                             onActivated: themeController.style = currentText
+
+                            function syncStyleIndex() {
+                                currentIndex = Math.max(0,
+                                    themeController.availableStyles.indexOf(themeController.style))
+                            }
+
+                            Component.onCompleted: syncStyleIndex()
+                            Connections {
+                                target: themeController
+                                function onStyleChanged() { styleBox.syncStyleIndex() }
+                            }
                         }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
                         Label { text: "Appearance"; color: themeController.muted }
                         ComboBox {
+                            id: appearanceBox
                             Layout.fillWidth: true
                             model: ["System", "Light", "Dark"]
-                            currentIndex: Math.max(0, model.indexOf(themeController.mode))
+                            currentIndex: 0
                             onActivated: themeController.mode = currentText
-                        }
-                    }
-                }
-            }
-        }
 
-        Rectangle {
-            Layout.fillWidth: true
-            radius: themeController.cardRadius
-            color: themeController.panel
-            border.color: themeController.border
-            implicitHeight: glassContent.implicitHeight + 32
+                            function syncModeIndex() {
+                                currentIndex = Math.max(0, model.indexOf(themeController.mode))
+                            }
 
-            ColumnLayout {
-                id: glassContent
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label {
-                        Layout.fillWidth: true
-                        text: "GLASSMORPHISM EDITOR"
-                        color: themeController.accent
-                        font.bold: true
-                        font.pixelSize: 11
-                        font.letterSpacing: 1.1
-                    }
-                    Button { text: "Reset"; onClicked: themeController.resetGlass() }
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Kontrol ini mengatur material, transparansi, tepi, dan karakter visual permukaan kaca. Efek blur native Qt akan dioptimalkan terpisah dari nilai desainnya."
-                    color: themeController.muted
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: 11
-                }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: width >= 660 ? 2 : 1
-                    columnSpacing: 18
-                    rowSpacing: 10
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Blur · " + Math.round(themeController.glassBlur) + " px"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 0; to: 40; value: themeController.glassBlur; onMoved: themeController.glassBlur = value }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Background opacity · " + Math.round(themeController.glassOpacity * 100) + "%"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 0.05; to: 0.85; value: themeController.glassOpacity; onMoved: themeController.glassOpacity = value }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Border opacity · " + Math.round(themeController.glassBorderOpacity * 100) + "%"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 0.05; to: 1; value: themeController.glassBorderOpacity; onMoved: themeController.glassBorderOpacity = value }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Border radius · " + Math.round(themeController.glassRadius) + " px"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 0; to: 40; value: themeController.glassRadius; onMoved: themeController.glassRadius = value }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Saturation · " + Math.round(themeController.glassSaturation) + "%"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 0; to: 200; value: themeController.glassSaturation; onMoved: themeController.glassSaturation = value }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Shadow intensity · " + Math.round(themeController.glassShadow) + "%"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 0; to: 80; value: themeController.glassShadow; onMoved: themeController.glassShadow = value }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Spotlight size · " + Math.round(themeController.glassSpotlightSize) + " px"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 80; to: 600; value: themeController.glassSpotlightSize; onMoved: themeController.glassSpotlightSize = value }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Spotlight opacity · " + Math.round(themeController.glassSpotlightOpacity * 100) + "%"; color: themeController.text }
-                        Slider { Layout.fillWidth: true; from: 0; to: 0.6; value: themeController.glassSpotlightOpacity; onMoved: themeController.glassSpotlightOpacity = value }
-                    }
-                }
-
-                CheckBox {
-                    text: "Aktifkan glow spotlight pada preview"
-                    checked: themeController.glassGlowEnabled
-                    onToggled: themeController.glassGlowEnabled = checked
-                }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: width >= 620 ? 2 : 1
-                    columnSpacing: 12
-                    rowSpacing: 8
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Base glass color"; color: themeController.muted }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: themeController.glassBaseColor
-                            placeholderText: "#FFFFFF"
-                            onEditingFinished: if (themeController.isHex(text)) themeController.glassBaseColor = text.toUpperCase()
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Spotlight color"; color: themeController.muted }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: themeController.glassSpotlightColor
-                            placeholderText: "#FFFFFF"
-                            onEditingFinished: if (themeController.isHex(text)) themeController.glassSpotlightColor = text.toUpperCase()
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Preview background"; color: themeController.muted }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: themeController.glassPreviewBackground
-                            placeholderText: "#6B83A6"
-                            onEditingFinished: if (themeController.isHex(text)) themeController.glassPreviewBackground = text.toUpperCase()
-                        }
-                    }
-                }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: width >= 520 ? 2 : 1
-                    columnSpacing: 8
-                    Button { Layout.fillWidth: true; text: "Choose background image"; onClicked: previewImageDialog.open() }
-                    Button { Layout.fillWidth: true; text: "Clear image"; enabled: themeController.glassPreviewImage.length > 0; onClicked: themeController.glassPreviewImage = "" }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 190
-                    radius: 16
-                    clip: true
-                    color: themeController.glassPreviewBackground
-                    border.color: Qt.lighter(themeController.glassPreviewBackground, 1.25)
-                    Image {
-                        anchors.fill: parent
-                        source: themeController.glassPreviewImage
-                        fillMode: Image.PreserveAspectCrop
-                        visible: themeController.glassPreviewImage.length > 0
-                    }
-                    Item {
-                        id: previewBackgroundLayer
-                        anchors.fill: parent
-                        Rectangle {
-                            width: 150; height: 150; radius: 75
-                            x: parent.width * 0.58; y: -35
-                            color: themeController.brand
-                            opacity: 0.7
-                        }
-                        Rectangle {
-                            width: 120; height: 120; radius: 60
-                            x: 20; y: 95
-                            color: themeController.accentAnchor
-                            opacity: 0.65
-                        }
-                        Rectangle {
-                            id: spotlightSource
-                            width: themeController.glassSpotlightSize
-                            height: width
-                            radius: width / 2
-                            x: Math.max(0, parent.width - width * 0.72)
-                            y: -height * 0.55
-                            color: themeController.spotlight
-                            opacity: themeController.useHeavyEffects && themeController.glassGlowEnabled ? 0.85 : 0
-                        }
-                        MultiEffect {
-                            anchors.fill: spotlightSource
-                            source: spotlightSource
-                            visible: themeController.useHeavyEffects
-                            blurEnabled: true
-                            blur: 1
-                            blurMax: 64
-                            autoPaddingEnabled: false
-                        }
-                    }
-                    ShaderEffectSource {
-                        id: glassBackdropSource
-                        anchors.fill: glassPanel
-                        sourceItem: previewBackgroundLayer
-                        sourceRect: Qt.rect(glassPanel.x, glassPanel.y, glassPanel.width, glassPanel.height)
-                        textureSize: Qt.size(Math.max(1, glassPanel.width * (themeController.useHeavyEffects ? 1.5 : 1)), Math.max(1, glassPanel.height * (themeController.useHeavyEffects ? 1.5 : 1)))
-                        live: themeController.useHeavyEffects
-                        visible: themeController.useHeavyEffects
-                        hideSource: false
-                    }
-                    MultiEffect {
-                        z: 1
-                        anchors.fill: glassPanel
-                        source: glassBackdropSource
-                        visible: themeController.useHeavyEffects
-                        blurEnabled: true
-                        blur: Math.max(0, Math.min(1, themeController.glassBlur / 40))
-                        blurMax: 40
-                        saturation: Math.max(-1, Math.min(1, (themeController.glassSaturation - 100) / 100))
-                    }
-                    Rectangle {
-                        id: glassPanel
-                        z: 2
-                        anchors.centerIn: parent
-                        width: Math.min(parent.width - 32, 360)
-                        height: 132
-                        radius: themeController.glassRadius
-                        color: themeController.glassSurface
-                        border.color: themeController.glassBorder
-                        border.width: 1
-                        layer.enabled: themeController.useHeavyEffects
-                        layer.effect: MultiEffect {
-                            shadowEnabled: true
-                            shadowColor: Qt.rgba(0, 0, 0, themeController.glassShadow / 100)
-                            shadowBlur: Math.max(0, Math.min(1, themeController.glassShadow / 80))
-                            shadowVerticalOffset: 8
-                            autoPaddingEnabled: false
-                        }
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 5
-                            Label { text: "LIVE GLASS PREVIEW"; color: themeController.text; font.bold: true; font.pixelSize: 10 }
-                            Label { text: "Miselium Workspace"; color: themeController.text; font.pixelSize: 19; font.bold: true }
-                            Label {
-                                Layout.fillWidth: true
-                                text: "Frosted surface · " + Math.round(themeController.glassBlur) + " px blur · " + Math.round(themeController.glassOpacity * 100) + "% opacity"
-                                color: themeController.muted
-                                wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                            Component.onCompleted: syncModeIndex()
+                            Connections {
+                                target: themeController
+                                function onModeChanged() { appearanceBox.syncModeIndex() }
                             }
                         }
                     }
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Catatan: preview ini menunjukkan tint, transparansi, border, dan radius. Blur dan saturation disimpan sebagai token; rendering backdrop blur native memerlukan tahap integrasi efek Qt yang terpisah."
-                    color: themeController.muted
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: 10
                 }
             }
         }
@@ -382,49 +161,100 @@ Item {
                         }
                     }
                 }
-                Repeater {
-                    model: themeController.filterPalettes(studio.harmonyFilter, studio.vibeFilter, studio.compatibilityFilter)
-                    delegate: Rectangle {
+
+                ComboBox {
+                    id: paletteBox
+                    Layout.fillWidth: true
+                    model: studio.filteredPalettes
+                    textRole: "name"
+                    displayText: currentIndex >= 0 ? currentText : "Pilih palet warna"
+
+                    function syncPaletteIndex() {
+                        for (var i = 0; i < studio.filteredPalettes.length; ++i) {
+                            if (studio.filteredPalettes[i].name === themeController.palette) {
+                                currentIndex = i
+                                return
+                            }
+                        }
+                        currentIndex = -1
+                    }
+
+                    Component.onCompleted: syncPaletteIndex()
+                    onModelChanged: syncPaletteIndex()
+                    onActivated: function(index) {
+                        var item = studio.filteredPalettes[index]
+                        if (themeController.applyPalette(item))
+                            studio.paletteFeedback = item.name + " diterapkan"
+                    }
+
+                    Connections {
+                        target: themeController
+                        function onPaletteChanged() { paletteBox.syncPaletteIndex() }
+                    }
+
+                    delegate: ItemDelegate {
                         required property var modelData
-                        Layout.fillWidth: true
-                        implicitHeight: 92
-                        radius: themeController.controlRadius
-                        color: themeController.palette === modelData.name ? themeController.selected : themeController.panelInset
-                        border.color: themeController.palette === modelData.name ? themeController.accent : themeController.border
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
+                        width: paletteBox.width
+                        contentItem: RowLayout {
                             spacing: 10
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 3
-                                Label { text: modelData.name; color: themeController.text; font.bold: true; font.pixelSize: 12 }
-                                Label { text: modelData.harmony + " · " + modelData.vibe + " · " + modelData.compatibility; color: themeController.muted; font.pixelSize: 9 }
-                                RowLayout {
-                                    spacing: 3
-                                    Repeater {
-                                        model: [modelData.brand, modelData.accent, modelData.background, modelData.border]
-                                        delegate: Rectangle {
-                                            required property string modelData
-                                            Layout.preferredWidth: 34
-                                            Layout.preferredHeight: 18
-                                            radius: 3
-                                            color: modelData
-                                            border.color: "#667080"
-                                        }
-                                    }
+                                spacing: 2
+                                Label {
+                                    text: modelData.name
+                                    color: themeController.text
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+                                Label {
+                                    text: modelData.harmony + " · " + modelData.vibe
+                                        + " · " + modelData.compatibility
+                                    color: themeController.muted
+                                    font.pixelSize: 9
                                 }
                             }
-                            Button {
-                                text: "Pakai"
-                                onClicked: {
-                                    themeController.applyPalette(modelData)
-                                    studio.paletteFeedback = modelData.name + " diterapkan"
+                            RowLayout {
+                                spacing: 3
+                                Repeater {
+                                    model: [modelData.brand, modelData.accent,
+                                        modelData.background, modelData.border]
+                                    delegate: Rectangle {
+                                        required property string modelData
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 16
+                                        radius: 3
+                                        color: modelData
+                                        border.color: themeController.border
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Label {
+                        text: "Palet aktif · " + themeController.palette
+                        color: themeController.muted
+                        font.pixelSize: 10
+                    }
+                    Item { Layout.fillWidth: true }
+                    Repeater {
+                        model: [themeController.brand, themeController.accentAnchor,
+                            themeController.backgroundAnchor, themeController.borderAnchor]
+                        delegate: Rectangle {
+                            required property string modelData
+                            Layout.preferredWidth: 38
+                            Layout.preferredHeight: 18
+                            radius: 3
+                            color: modelData
+                            border.color: themeController.border
+                        }
+                    }
+                }
+
                 Label {
                     Layout.fillWidth: true
                     text: studio.paletteFeedback
@@ -446,125 +276,80 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 16
                 spacing: 10
-                Label { text: "CUSTOM FOUR-COLOR PALETTE"; color: themeController.accent; font.bold: true; font.pixelSize: 11 }
+                Label {
+                    text: "CUSTOM FOUR-COLOR PALETTE"
+                    color: themeController.accent
+                    font.bold: true
+                    font.pixelSize: 11
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: "Gunakan color picker atau masukkan kode HEX untuk mengubah setiap jangkar warna."
+                    color: themeController.muted
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 11
+                }
                 GridLayout {
                     Layout.fillWidth: true
                     columns: width >= 620 ? 2 : 1
-                    columnSpacing: 10
-                    rowSpacing: 8
-                    ColumnLayout {
+                    columnSpacing: 14
+                    rowSpacing: 10
+                    ColorField {
                         Layout.fillWidth: true
-                        Label { text: "Brand"; color: themeController.muted; font.pixelSize: 10 }
-                        TextField { id: brandField; Layout.fillWidth: true; text: themeController.brand }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Accent"; color: themeController.muted; font.pixelSize: 10 }
-                        TextField { id: accentField; Layout.fillWidth: true; text: themeController.accentAnchor }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Background"; color: themeController.muted; font.pixelSize: 10 }
-                        TextField { id: backgroundField; Layout.fillWidth: true; text: themeController.backgroundAnchor }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Border"; color: themeController.muted; font.pixelSize: 10 }
-                        TextField { id: borderField; Layout.fillWidth: true; text: themeController.borderAnchor }
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label { Layout.fillWidth: true; text: studio.paletteFeedback; color: themeController.danger; wrapMode: Text.WordWrap; font.pixelSize: 10 }
-                    Button {
-                        text: "Apply colors"
-                        onClicked: {
-                            var ok = themeController.applyCustomAnchors(brandField.text, accentField.text, backgroundField.text, borderField.text)
-                            studio.paletteFeedback = ok ? "Custom palette diterapkan" : "Gunakan format HEX #RRGGBB untuk keempat warna"
+                        themeController: studio.themeController
+                        label: "Brand"
+                        value: themeController.brand
+                        onColorAccepted: function(hex) {
+                            studio.paletteFeedback = themeController.applyAnchor("brand", hex)
+                                ? "Brand diperbarui" : "Gunakan format HEX #RRGGBB"
                         }
                     }
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            radius: themeController.cardRadius
-            color: themeController.panel
-            border.color: themeController.border
-            implicitHeight: scaleContent.implicitHeight + 32
-            ColumnLayout {
-                id: scaleContent
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 8
-                Label { text: "COLOR SCALES · 11 STEPS PER ANCHOR"; color: themeController.accent; font.bold: true; font.pixelSize: 11 }
-                Label { text: "Brand"; color: themeController.muted; font.pixelSize: 10 }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    Repeater {
-                        model: themeController.brandScale
-                        delegate: Rectangle {
-                            required property color modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 28
-                            color: modelData
-                            radius: 3
+                    ColorField {
+                        Layout.fillWidth: true
+                        themeController: studio.themeController
+                        label: "Accent"
+                        value: themeController.accentAnchor
+                        onColorAccepted: function(hex) {
+                            studio.paletteFeedback = themeController.applyAnchor("accent", hex)
+                                ? "Accent diperbarui" : "Gunakan format HEX #RRGGBB"
                         }
                     }
-                }
-                Label { text: "Accent"; color: themeController.muted; font.pixelSize: 10 }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    Repeater {
-                        model: themeController.accentScale
-                        delegate: Rectangle {
-                            required property color modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 24
-                            color: modelData
-                            radius: 3
+                    ColorField {
+                        Layout.fillWidth: true
+                        themeController: studio.themeController
+                        label: "Background"
+                        value: themeController.backgroundAnchor
+                        onColorAccepted: function(hex) {
+                            studio.paletteFeedback = themeController.applyAnchor("background", hex)
+                                ? "Background diperbarui" : "Gunakan format HEX #RRGGBB"
                         }
                     }
-                }
-                Label { text: "Background"; color: themeController.muted; font.pixelSize: 10 }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    Repeater {
-                        model: themeController.backgroundScale
-                        delegate: Rectangle {
-                            required property color modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 24
-                            color: modelData
-                            border.color: themeController.border
-                            radius: 3
-                        }
-                    }
-                }
-                Label { text: "Border"; color: themeController.muted; font.pixelSize: 10 }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    Repeater {
-                        model: themeController.borderScale
-                        delegate: Rectangle {
-                            required property color modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 24
-                            color: modelData
-                            border.color: themeController.border
-                            radius: 3
+                    ColorField {
+                        Layout.fillWidth: true
+                        themeController: studio.themeController
+                        label: "Border"
+                        value: themeController.borderAnchor
+                        onColorAccepted: function(hex) {
+                            studio.paletteFeedback = themeController.applyAnchor("border", hex)
+                                ? "Border diperbarui" : "Gunakan format HEX #RRGGBB"
                         }
                     }
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: "Kontras Brand terhadap putih: " + themeController.contrastRatio(themeController.brand, "#FFFFFF").toFixed(2) + ":1"
-                        + (themeController.contrastRatio(themeController.brand, "#FFFFFF") >= 4.5 ? " · memenuhi AA untuk teks normal" : " · gunakan teks putih besar atau pilih warna brand lebih gelap")
+                    text: studio.paletteFeedback
+                    color: themeController.danger
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 10
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: "Kontras Brand terhadap putih: "
+                        + themeController.contrastRatio(themeController.brand, "#FFFFFF").toFixed(2)
+                        + ":1"
+                        + (themeController.contrastRatio(themeController.brand, "#FFFFFF") >= 4.5
+                            ? " · memenuhi AA untuk teks normal"
+                            : " · gunakan teks putih besar atau pilih warna brand lebih gelap")
                     color: themeController.muted
                     wrapMode: Text.WordWrap
                     font.pixelSize: 10
@@ -580,15 +365,29 @@ Item {
                         anchors.margins: 12
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: "Dashboard preview"; color: themeController.dark ? "#FFFFFF" : "#202A34"; font.bold: true }
-                            Label { text: "Brand · Accent · Surface · Border"; color: themeController.dark ? "#D5DCE4" : "#596675"; font.pixelSize: 10 }
+                            Label {
+                                text: "Dashboard preview"
+                                color: themeController.dark ? "#FFFFFF" : "#202A34"
+                                font.bold: true
+                            }
+                            Label {
+                                text: "Brand · Accent · Surface · Border"
+                                color: themeController.dark ? "#D5DCE4" : "#596675"
+                                font.pixelSize: 10
+                            }
                         }
                         Rectangle {
                             Layout.preferredWidth: 78
                             Layout.preferredHeight: 34
                             radius: 8
                             color: themeController.brand
-                            Label { anchors.centerIn: parent; text: "Action"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 10 }
+                            Label {
+                                anchors.centerIn: parent
+                                text: "Action"
+                                color: "#FFFFFF"
+                                font.bold: true
+                                font.pixelSize: 10
+                            }
                         }
                     }
                 }
@@ -606,12 +405,30 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 16
                 spacing: 9
-                Label { text: "MY THEMES"; color: themeController.accent; font.bold: true; font.pixelSize: 11 }
-                Label { text: "Simpan kombinasi style, palet, dan seluruh pengaturan Glassmorphism sebagai tema pribadi."; color: themeController.muted; wrapMode: Text.WordWrap; font.pixelSize: 10 }
-                TextField { id: themeNameField; Layout.fillWidth: true; placeholderText: "Nama tema, misalnya Miselium Ocean Glass" }
+                Label {
+                    text: "MY THEMES"
+                    color: themeController.accent
+                    font.bold: true
+                    font.pixelSize: 11
+                }
+                Label {
+                    text: "Simpan kombinasi style, palet, dan preferensi tema sebagai tema pribadi."
+                    color: themeController.muted
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 10
+                }
+                TextField {
+                    id: themeNameField
+                    Layout.fillWidth: true
+                    placeholderText: "Nama tema, misalnya Miselium Ocean"
+                }
                 RowLayout {
                     Layout.fillWidth: true
-                    Button { text: "Save theme"; onClicked: studio.themeFeedback = themeController.saveTheme(themeNameField.text) ? "Tema tersimpan" : "Masukkan nama tema terlebih dahulu" }
+                    Button {
+                        text: "Save theme"
+                        onClicked: studio.themeFeedback = themeController.saveTheme(themeNameField.text)
+                            ? "Tema tersimpan" : "Masukkan nama tema terlebih dahulu"
+                    }
                     Item { Layout.fillWidth: true }
                     Button { text: "Reset all"; onClicked: themeController.reset() }
                 }
@@ -626,7 +443,8 @@ Item {
                     Button {
                         text: "Apply"
                         enabled: savedThemeBox.currentIndex >= 0
-                        onClicked: studio.themeFeedback = themeController.applySavedTheme(savedThemeBox.currentText) ? "Tema diterapkan" : "Tema tidak ditemukan"
+                        onClicked: studio.themeFeedback = themeController.applySavedTheme(savedThemeBox.currentText)
+                            ? "Tema diterapkan" : "Tema tidak ditemukan"
                     }
                     Button {
                         text: "Delete"
@@ -638,15 +456,14 @@ Item {
                         }
                     }
                 }
-                Label { Layout.fillWidth: true; text: studio.themeFeedback; color: themeController.success; wrapMode: Text.WordWrap; font.pixelSize: 10 }
+                Label {
+                    Layout.fillWidth: true
+                    text: studio.themeFeedback
+                    color: themeController.success
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 10
+                }
             }
         }
-    }
-
-    FileDialog {
-        id: previewImageDialog
-        title: "Pilih gambar latar preview"
-        nameFilters: ["Image files (*.png *.jpg *.jpeg *.webp)"]
-        onAccepted: themeController.glassPreviewImage = selectedFile.toString()
     }
 }

@@ -41,9 +41,9 @@ function getSections() {
             title: "ANTARMUKA",
             description: "Preferensi tampilan aplikasi.",
             modules: [
-                { code: "appearance", title: "Tampilan",
-                  description: "Tema, ukuran huruf, dan preferensi antarmuka.",
-                  detail: "Pengaturan tema, ukuran huruf, dan preferensi tampilan. Preferensi ini disimpan per pengguna atau per tenant sesuai cakupan pengaturannya." }
+                { code: "appearance", title: "Preferensi Antarmuka",
+                  description: "Ukuran huruf, kepadatan, dan preferensi tampilan lanjutan.",
+                  detail: "Pengaturan ukuran huruf, kepadatan, dan preferensi tampilan lanjutan. Tema aplikasi dikelola melalui menu Tema Aplikasi. Preferensi ini disimpan per pengguna atau per tenant sesuai cakupan pengaturannya." }
             ]
         }
     ]

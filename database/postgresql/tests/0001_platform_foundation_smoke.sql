@@ -1,5 +1,7 @@
--- M9 foundation smoke test. Run against a disposable PostgreSQL database
--- after 0001_platform_foundation.sql. All fixtures are rolled back.
+-- M9 foundation smoke test. Run as a database administrator on a disposable DB.
+-- Requires a pre-created non-owner, non-superuser role: miselium_app.
+-- Grant this role SELECT, INSERT on locations before running.
+-- Fixtures are rolled back; RLS assertions execute under the runtime role.
 BEGIN;
 
 DO $$
@@ -9,8 +11,6 @@ DECLARE
   user_a uuid := gen_random_uuid();
   location_a uuid;
   location_b uuid;
-  warehouse_a uuid;
-  visible_count integer;
 BEGIN
   INSERT INTO users(id, username) VALUES (user_a, 'm9-smoke-' || replace(user_a::text,'-',''));
   INSERT INTO tenants(id, code, name) VALUES
@@ -23,10 +23,8 @@ BEGIN
   VALUES (tenant_b, 'MAIN', 'B Main', true) RETURNING id INTO location_b;
 
   INSERT INTO warehouses(tenant_id, location_id, code, name)
-  VALUES (tenant_a, location_a, 'WH-A', 'Warehouse A')
-  RETURNING id INTO warehouse_a;
+  VALUES (tenant_a, location_a, 'WH-A', 'Warehouse A');
 
-  -- Composite FK must reject a tenant-A warehouse pointing to tenant-B location.
   BEGIN
     INSERT INTO warehouses(tenant_id, location_id, code, name)
     VALUES (tenant_a, location_b, 'BAD', 'Cross tenant');
@@ -35,14 +33,23 @@ BEGIN
     NULL;
   END;
 
-  -- RLS hides tenant B when context is tenant A.
-  PERFORM set_config('app.tenant_id', tenant_a::text, true);
+  PERFORM set_config('m9.tenant_a', tenant_a::text, true);
+  PERFORM set_config('m9.tenant_b', tenant_b::text, true);
+END $$;
+
+SET LOCAL ROLE miselium_app;
+SELECT set_config('app.tenant_id', current_setting('m9.tenant_a'), true);
+
+DO $$
+DECLARE
+  visible_count integer;
+  tenant_b uuid := current_setting('m9.tenant_b')::uuid;
+BEGIN
   SELECT count(*) INTO visible_count FROM locations;
   IF visible_count <> 1 THEN
     RAISE EXCEPTION 'Expected one visible location for tenant A, got %', visible_count;
   END IF;
 
-  -- Tenant A cannot insert a row owned by tenant B.
   BEGIN
     INSERT INTO locations(tenant_id, code, name)
     VALUES (tenant_b, 'INTRUDE', 'Should fail');

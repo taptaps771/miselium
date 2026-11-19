@@ -157,7 +157,8 @@ The legacy dump contains Django infrastructure tables as well as application tab
 - [x] Tenant/location/warehouse/production-unit/kumbung hierarchy is defined.
 - [x] Composite tenant foreign keys and unique constraints are defined.
 - [x] Tenant RLS is enabled for tenant-owned foundation tables.
-- [x] PostgreSQL smoke tests cover cross-tenant access and referential integrity.
+- [x] PostgreSQL smoke-test script authored for cross-tenant access and referential integrity.
+- [ ] Execute the smoke-test script successfully against PostgreSQL using the non-owner application role.
 - [x] SQLite-to-PostgreSQL migration policy and price/cost snapshot contract are documented.
 - [ ] Execute migrations and integration tests against a provisioned PostgreSQL instance in CI/deployment environment.
 - [ ] Complete per-table legacy mapping and reconciliation before importing production data.
@@ -173,4 +174,4 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0001_p
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
 ```
 
-The smoke test runs inside a transaction and rolls back its fixtures. Review and adapt role grants to the deployment's database roles before production use.
+The smoke test must be run by a database administrator on a disposable database. It seeds fixtures with the administrative role, then switches to a non-owner, non-superuser runtime role named `miselium_app` to verify RLS. Create that role and grant the minimum required privileges before running the test. The test runs inside a transaction and rolls back its fixtures. Do not run the RLS assertions as a superuser or a role with BYPASSRLS.

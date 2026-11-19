@@ -92,6 +92,65 @@ ALTER TABLE production_losses
         'inoculation','incubation','kumbung','harvest','other'
     ));
 
+-- New runs must belong to a cycle and the cycle/machine must share a production unit.
+-- Existing legacy runs with NULL cycle_id remain readable and untouched.
+CREATE OR REPLACE FUNCTION guard_sterilization_run_cycle()
+RETURNS trigger LANGUAGE plpgsql AS $m1012$
+DECLARE
+    v_machine_unit uuid;
+    v_cycle_unit uuid;
+BEGIN
+    IF NEW.cycle_id IS NULL THEN
+        RAISE EXCEPTION 'New sterilization runs must belong to a sterilization cycle'
+            USING ERRCODE = '23514';
+    END IF;
+    SELECT production_unit_id INTO v_machine_unit
+      FROM sterilizers
+     WHERE tenant_id = NEW.tenant_id AND id = NEW.sterilizer_id;
+    SELECT production_unit_id INTO v_cycle_unit
+      FROM sterilization_cycles
+     WHERE tenant_id = NEW.tenant_id AND id = NEW.cycle_id;
+    IF v_machine_unit IS NULL OR v_cycle_unit IS NULL OR v_machine_unit <> v_cycle_unit THEN
+        RAISE EXCEPTION 'Sterilization cycle and machine must belong to the same production unit'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$m1012$;
+CREATE TRIGGER sterilization_run_cycle_guard
+    BEFORE INSERT OR UPDATE OF cycle_id, sterilizer_id
+    ON sterilization_runs
+    FOR EACH ROW EXECUTE FUNCTION guard_sterilization_run_cycle();
+
+-- Press output is accepted only while the batch is in its press stage and
+-- only from a tenant-owned machine configured as PRESS_BAGLOG.
+CREATE OR REPLACE FUNCTION guard_production_press_output_insert()
+RETURNS trigger LANGUAGE plpgsql AS $m1012$
+DECLARE
+    v_batch_status varchar(30);
+    v_machine_type varchar(40);
+BEGIN
+    SELECT status INTO v_batch_status
+      FROM production_batches
+     WHERE tenant_id = NEW.tenant_id AND id = NEW.batch_id;
+    SELECT machine_type_code INTO v_machine_type
+      FROM production_machines
+     WHERE tenant_id = NEW.tenant_id AND id = NEW.machine_id;
+    IF v_batch_status IS DISTINCT FROM 'press_baglog' THEN
+        RAISE EXCEPTION 'Press output can only be recorded for a batch in press_baglog stage'
+            USING ERRCODE = '23514';
+    END IF;
+    IF v_machine_type IS DISTINCT FROM 'PRESS_BAGLOG' THEN
+        RAISE EXCEPTION 'Press output requires a PRESS_BAGLOG machine'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$m1012$;
+CREATE TRIGGER production_press_output_insert_guard
+    BEFORE INSERT ON production_press_outputs
+    FOR EACH ROW EXECUTE FUNCTION guard_production_press_output_insert();
+
 CREATE TRIGGER production_press_outputs_immutable
     BEFORE UPDATE OR DELETE ON production_press_outputs
     FOR EACH ROW EXECUTE FUNCTION reject_immutable_mutation();

@@ -184,13 +184,13 @@ BEGIN
     RAISE EXCEPTION 'tenant membership permission required' USING ERRCODE = '42501';
   END IF;
 
-  UPDATE tenant_invitations
-     SET status = 'expired'
-   WHERE tenant_id = p_tenant_id
-     AND status = 'pending' AND expires_at <= now();
-
   RETURN QUERY
-    SELECT i.id, i.email_normalized, i.status, r.code, i.expires_at, i.created_at
+    SELECT i.id, i.email_normalized,
+           CASE
+             WHEN i.status = 'pending' AND i.expires_at <= now() THEN 'expired'
+             ELSE i.status
+           END::varchar(20),
+           r.code, i.expires_at, i.created_at
       FROM tenant_invitations i
       JOIN tenant_roles r
         ON r.tenant_id = i.tenant_id AND r.id = i.role_id

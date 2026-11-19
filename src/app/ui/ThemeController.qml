@@ -6,8 +6,7 @@ QtObject {
 
     // User preference is persisted locally by Qt. "System" follows the OS
     // color scheme where Qt exposes it; otherwise it safely falls back to Light.
-    Settings {
-        id: preferences
+    property Settings preferences: Settings {
         category: "appearance"
         property string themeMode: "System"
     }

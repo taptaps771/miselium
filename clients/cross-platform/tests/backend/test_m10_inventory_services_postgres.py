@@ -9,7 +9,6 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.backend.services.inventory import (
-    InventoryServiceError,
     consume_production_materials,
     post_inventory_document,
     reverse_inventory_document,

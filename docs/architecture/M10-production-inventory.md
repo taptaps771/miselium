@@ -58,11 +58,11 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] Production lots, kumbung placement, losses and recovery.
 - [x] Historical material and production cost snapshot contract.
 - [x] PostgreSQL smoke-test script authored.
-- [ ] Apply migration and run tests on PostgreSQL 16+ using a non-owner runtime role. (The expanded smoke test is authored; it still needs an actual run.)
+- [x] Apply M9 + M10 migrations and run the expanded smoke/invariant test on PostgreSQL 16 using a non-owner, non-superuser runtime role (GitHub Actions run #4: success).
 - [ ] Implement posting, stock locking, lifecycle transitions and capacity validation in application services.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
-The last three items require a running PostgreSQL/application environment; a schema commit does not prove runtime behavior.
+The remaining application-service and legacy-reconciliation items require application implementation and data-specific verification; a schema commit alone does not prove those behaviors.
 
 ## Apply
 

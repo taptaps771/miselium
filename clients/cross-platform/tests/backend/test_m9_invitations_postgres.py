@@ -179,6 +179,13 @@ async def test_tenant_invitation_create_list_accept_revoke_and_email_binding(mon
             assert accepted.status_code == 200, accepted.text
             assert accepted.json()["tenant_id"] == str(tenant_id)
 
+            active_member_invite = await client.post(
+                f"/v1/tenants/{tenant_id}/invitations",
+                headers=inviter_headers,
+                json={"email": invitee_email, "role_code": "member"},
+            )
+            assert active_member_invite.status_code == 409
+
             replay = await client.post(
                 "/v1/invitations/accept",
                 headers=invitee_headers,

@@ -6,6 +6,27 @@ ALTER TABLE tenant_invitations
   ADD COLUMN accepted_at timestamptz,
   ADD COLUMN revoked_at timestamptz;
 
+-- Preserve existing terminal invitation records without fabricating actor identities.
+UPDATE tenant_invitations
+   SET accepted_at = created_at
+ WHERE status = 'accepted' AND accepted_by IS NOT NULL AND accepted_at IS NULL;
+UPDATE tenant_invitations
+   SET revoked_at = created_at
+ WHERE status = 'revoked' AND revoked_at IS NULL;
+
+DO $m9_invitation_preflight$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM tenant_invitations
+     WHERE (status = 'accepted' AND accepted_by IS NULL)
+        OR (status = 'revoked' AND revoked_at IS NULL)
+  ) THEN
+    RAISE EXCEPTION
+      'Existing accepted/revoked invitations lack actor metadata; resolve before migration 0006';
+  END IF;
+END;
+$m9_invitation_preflight$;
+
 ALTER TABLE tenant_invitations
   ADD CONSTRAINT ck_tenant_invitation_state_timestamps CHECK (
     (status <> 'accepted' OR (accepted_by IS NOT NULL AND accepted_at IS NOT NULL))
@@ -104,6 +125,53 @@ BEGIN
       FROM tenant_invitations i WHERE i.id = v_id;
 END;
 $m9_invite_create$;
+
+CREATE OR REPLACE FUNCTION list_tenant_invitations(
+  p_actor_user_id uuid,
+  p_tenant_id uuid
+)
+RETURNS TABLE(
+  invitation_id uuid,
+  email_normalized varchar(320),
+  status varchar(20),
+  role_code varchar(60),
+  expires_at timestamptz,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $m9_invite_list$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM tenant_memberships m
+      JOIN membership_role_assignments a
+        ON a.tenant_id = m.tenant_id AND a.membership_id = m.id
+      JOIN tenant_role_permissions rp
+        ON rp.tenant_id = a.tenant_id AND rp.role_id = a.role_id
+      JOIN tenant_permissions p ON p.id = rp.permission_id
+     WHERE m.tenant_id = p_tenant_id
+       AND m.user_id = p_actor_user_id AND m.status = 'active'
+       AND p.code IN ('tenant.members.invite', 'tenant.members.read')
+  ) THEN
+    RAISE EXCEPTION 'tenant membership permission required' USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE tenant_invitations
+     SET status = 'expired'
+   WHERE tenant_id = p_tenant_id
+     AND status = 'pending' AND expires_at <= now();
+
+  RETURN QUERY
+    SELECT i.id, i.email_normalized, i.status, r.code, i.expires_at, i.created_at
+      FROM tenant_invitations i
+      JOIN tenant_roles r
+        ON r.tenant_id = i.tenant_id AND r.id = i.role_id
+     WHERE i.tenant_id = p_tenant_id
+     ORDER BY i.created_at DESC;
+END;
+$m9_invite_list$;
 
 CREATE OR REPLACE FUNCTION revoke_tenant_invitation(
   p_actor_user_id uuid,
@@ -278,9 +346,11 @@ END;
 $m9_invite_accept$;
 
 REVOKE ALL ON FUNCTION create_tenant_invitation(uuid, uuid, text, text, uuid, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION list_tenant_invitations(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION revoke_tenant_invitation(uuid, uuid, uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION accept_tenant_invitation(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION create_tenant_invitation(uuid, uuid, text, text, uuid, timestamptz) TO miselium_app;
+GRANT EXECUTE ON FUNCTION list_tenant_invitations(uuid, uuid) TO miselium_app;
 GRANT EXECUTE ON FUNCTION revoke_tenant_invitation(uuid, uuid, uuid, text) TO miselium_app;
 GRANT EXECUTE ON FUNCTION accept_tenant_invitation(uuid, text) TO miselium_app;
 

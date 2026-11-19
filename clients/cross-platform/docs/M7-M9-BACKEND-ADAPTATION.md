@@ -14,6 +14,7 @@ The canonical schema remains authoritative:
 - M9 RBAC/invitation compatibility: `database/postgresql/migrations/0003_tenant_rbac_invitation_roles.sql`
 - M9 authenticated membership discovery: `database/postgresql/migrations/0004_authenticated_membership_discovery.sql`
 - M9 global registration and tenant lifecycle: `database/postgresql/migrations/0005_global_registration_tenant_lifecycle.sql`
+- M9 tenant invitation and membership lifecycle: `database/postgresql/migrations/0006_tenant_invitation_lifecycle.sql`
 - Restricted runtime-role authentication grants: `database/postgresql/roles/0001_miselium_app_auth_read.sql`
 
 The existing M7 backend remains isolated until the adapter and PostgreSQL integration tests are implemented. No existing database or data is to be reset or deleted.

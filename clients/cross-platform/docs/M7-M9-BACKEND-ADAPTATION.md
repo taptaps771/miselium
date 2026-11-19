@@ -92,6 +92,20 @@ The registration endpoint requires an injected `verification_sender(email, raw_t
 
 Runtime database role grants are extended by migration 0005. Apply it only after the restricted `miselium_app` role exists and after migrations 0001–0004. It does not grant superuser or `BYPASSRLS` privileges.
 
+## 4B. Tenant invitation and membership lifecycle
+
+Migration `0006_tenant_invitation_lifecycle.sql` completes the invitation flow using the existing canonical `tenant_invitations` table and tenant-scoped `role_id` binding. It adds accepted/revoked timestamps, a uniqueness rule for one pending invitation per tenant/email, and permission-checked PostgreSQL functions for create, list, revoke, and accept.
+
+API endpoints:
+- `POST /v1/tenants/{tenant_id}/invitations`: an active tenant member with `tenant.members.invite` can invite an email to a tenant role. Only the built-in `member` role or tenant-defined non-system roles can be assigned; built-in `owner` and `admin` roles cannot be assigned by invitation.
+- `GET /v1/tenants/{tenant_id}/invitations`: users with `tenant.members.read` or `tenant.members.invite` can list invitations; expired pending rows are transitioned to `expired`.
+- `POST /v1/tenants/{tenant_id}/invitations/{invitation_id}/revoke`: invitation managers can revoke a still-pending invitation.
+- `POST /v1/invitations/accept`: a verified global user presents the raw token; the database compares the token hash and exact verified email, checks the tenant is active, locks the invitation, creates/reactivates the membership, assigns the tenant-bound role and primary-location scope, and marks the invitation accepted in one transaction.
+
+Invitation tokens are random, single-use, stored only as SHA-256 hashes, and never returned in API responses. Wrong-email, expired, revoked, replayed, or cross-tenant use is rejected. A user with an existing active or suspended membership cannot use an invitation to overwrite that membership. A user who previously left may rejoin through a fresh invitation, which replaces prior role assignments.
+
+The PostgreSQL functions independently enforce permissions and tenant/role binding; API checks are an additional layer. Runtime access to invitation state transitions is through function EXECUTE grants, not direct table UPDATE privileges. The API requires an injected `invitation_sender(email, raw_token, tenant_name)` delivery callback. Email-provider integration and retry/outbox delivery remain deployment work; the endpoint returns HTTP 503 if no sender is configured.
+
 ## 5. Invitation adaptation
 
 Migration `0003_tenant_rbac_invitation_roles.sql` adds a required `role_id` to `tenant_invitations` with composite foreign key `(tenant_id, role_id) → tenant_roles(tenant_id, id)`. Existing invitations are conservatively backfilled to the tenant's `member` role. The migration also seeds built-in owner/admin/member roles and a limited tenant permission vocabulary. The tenant-creation service must call `ensure_tenant_default_roles(tenant_id)` inside the same transaction after setting transaction-local tenant context. Existing memberships are backfilled to the least-privileged member role; promotion must be explicit and audited.

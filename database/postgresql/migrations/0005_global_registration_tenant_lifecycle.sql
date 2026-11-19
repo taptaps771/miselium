@@ -59,27 +59,65 @@ VALUES (
 )
 ON CONFLICT (code) DO NOTHING;
 
--- The API runtime is a restricted, non-owner, non-BYPASSRLS role.
--- Global registration and platform lifecycle operations are explicit grants.
-GRANT SELECT, INSERT ON users TO miselium_app;
+-- Column-level grants keep global identity data least-privileged even
+-- when a SQL injection reaches the runtime connection.
+GRANT SELECT (id, status) ON users TO miselium_app;
+GRANT INSERT (status) ON users TO miselium_app;
 GRANT UPDATE (status) ON users TO miselium_app;
-GRANT SELECT, INSERT ON user_profiles TO miselium_app;
-GRANT SELECT, INSERT ON user_auth_identities TO miselium_app;
-GRANT SELECT, INSERT, UPDATE (is_verified, is_primary, verified_at)
+
+GRANT INSERT (user_id, display_name) ON user_profiles TO miselium_app;
+GRANT SELECT (user_id, provider, password_hash, is_primary, created_at)
+  ON user_auth_identities TO miselium_app;
+GRANT INSERT (user_id, provider, provider_subject, password_hash, is_primary)
+  ON user_auth_identities TO miselium_app;
+
+GRANT SELECT (id, user_id, contact_type, normalized_value, is_verified)
   ON user_contact_points TO miselium_app;
-GRANT SELECT, INSERT, UPDATE (consumed_at)
+GRANT INSERT (user_id, contact_type, value, normalized_value, is_verified, is_primary)
+  ON user_contact_points TO miselium_app;
+GRANT UPDATE (is_verified, is_primary, verified_at)
+  ON user_contact_points TO miselium_app;
+
+GRANT SELECT (id, user_id, contact_point_id, token_hash, expires_at, consumed_at)
   ON global_email_verification_challenges TO miselium_app;
-GRANT SELECT, INSERT, UPDATE (status, approved_by, approved_at, approval_reason)
+GRANT INSERT (user_id, contact_point_id, token_hash, expires_at)
+  ON global_email_verification_challenges TO miselium_app;
+GRANT UPDATE (consumed_at)
+  ON global_email_verification_challenges TO miselium_app;
+
+GRANT SELECT (id, code, name, status, created_at) ON tenants TO miselium_app;
+GRANT INSERT (code, name, legal_name, status) ON tenants TO miselium_app;
+GRANT UPDATE (status, approved_by, approved_at, approval_reason)
   ON tenants TO miselium_app;
-GRANT SELECT, INSERT ON platform_audit_events TO miselium_app;
-GRANT SELECT ON platform_user_roles, platform_roles,
-  platform_role_permissions, platform_permissions TO miselium_app;
 
--- RLS still requires transaction-local tenant context for these tenant-owned
--- inserts; grants do not bypass any row-level policy.
-GRANT SELECT ON tenant_permissions TO miselium_app;
-GRANT SELECT, INSERT ON tenant_memberships, tenant_roles,
-  tenant_role_permissions, membership_role_assignments,
-  locations, membership_location_scopes TO miselium_app;
+GRANT INSERT (actor_user_id, action, target_type, target_id, reason, metadata)
+  ON platform_audit_events TO miselium_app;
+GRANT SELECT (user_id, role_id) ON platform_user_roles TO miselium_app;
+GRANT SELECT (id) ON platform_roles TO miselium_app;
+GRANT SELECT (role_id, permission_id) ON platform_role_permissions TO miselium_app;
+GRANT SELECT (id, code) ON platform_permissions TO miselium_app;
 
+-- RLS still requires transaction-local tenant context for tenant-owned writes.
+GRANT SELECT (id, code) ON tenant_permissions TO miselium_app;
+GRANT SELECT (id, tenant_id, user_id, status, joined_at)
+  ON tenant_memberships TO miselium_app;
+GRANT INSERT (tenant_id, user_id, status, joined_at)
+  ON tenant_memberships TO miselium_app;
+
+GRANT SELECT (id, tenant_id, code) ON tenant_roles TO miselium_app;
+GRANT INSERT (tenant_id, code, name, is_system) ON tenant_roles TO miselium_app;
+GRANT SELECT (tenant_id, role_id, permission_id)
+  ON tenant_role_permissions TO miselium_app;
+GRANT INSERT (tenant_id, role_id, permission_id)
+  ON tenant_role_permissions TO miselium_app;
+GRANT SELECT (tenant_id, membership_id, role_id)
+  ON membership_role_assignments TO miselium_app;
+GRANT INSERT (tenant_id, membership_id, role_id, assigned_by)
+  ON membership_role_assignments TO miselium_app;
+
+GRANT SELECT (id) ON locations TO miselium_app;
+GRANT INSERT (tenant_id, code, name, address, is_primary, is_active)
+  ON locations TO miselium_app;
+GRANT INSERT (tenant_id, membership_id, location_id)
+  ON membership_location_scopes TO miselium_app;
 COMMIT;

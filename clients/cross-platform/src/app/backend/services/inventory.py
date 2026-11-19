@@ -396,11 +396,11 @@ def post_inventory_document(
                 ) VALUES (
                     :tenant_id, :actor_user_id, 'inventory.document.posted',
                     'inventory_document', :document_id,
-                    jsonb_build_object('document_no', :document_no,
-                                       'document_type', :document_type,
-                                       'ledger_entries', :entry_count),
-                    jsonb_build_object('source_reference_type', :source_type,
-                                       'source_reference_id', :source_id)
+                    jsonb_build_object('document_no', CAST(:document_no AS text),
+                                       'document_type', CAST(:document_type AS text),
+                                       'ledger_entries', CAST(:entry_count AS integer)),
+                    jsonb_build_object('source_reference_type', CAST(:source_type AS text),
+                                       'source_reference_id', CAST(:source_id AS uuid))
                 )
                 """
             ),
@@ -684,7 +684,7 @@ def reverse_inventory_document(
                     :tenant_id, :actor_user_id, 'inventory.document.reversed',
                     'inventory_document', :document_id,
                     jsonb_build_object('status','posted'),
-                    jsonb_build_object('status','reversed','reversal_document_id',:reversal_id)
+                    jsonb_build_object('status','reversed','reversal_document_id',CAST(:reversal_id AS uuid))
                 )
                 """
             ),
@@ -814,9 +814,9 @@ def consume_production_materials(
                 ) VALUES (
                     :tenant_id, :actor_user_id, 'production.batch.materials_consumed',
                     'production_batch', :batch_id,
-                    jsonb_build_object('document_id', :document_id,
-                                       'line_count', :line_count,
-                                       'material_cost', :material_cost)
+                    jsonb_build_object('document_id', CAST(:document_id AS uuid),
+                                       'line_count', CAST(:line_count AS integer),
+                                       'material_cost', CAST(:material_cost AS numeric))
                 )
                 """
             ),

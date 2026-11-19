@@ -106,6 +106,11 @@ async def test_global_registration_tenant_request_and_platform_approval(monkeypa
                 json={"token": sent_verification[0][1]},
             )
             assert verified.status_code == 200, verified.text
+            replayed = await client.post(
+                "/v1/auth/verify-email",
+                json={"token": sent_verification[0][1]},
+            )
+            assert replayed.status_code == 400
             selection_token = verified.json()["selection_token"]
             selection_headers = {"Authorization": f"Bearer {selection_token}"}
             user_id = decode_tenant_selection_token(selection_token)

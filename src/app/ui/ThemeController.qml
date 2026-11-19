@@ -26,6 +26,7 @@ QtObject {
         property string glassSpotlightColor: "#FFFFFF"
         property string glassBaseColor: "#FFFFFF"
         property string glassPreviewBackground: "#6B83A6"
+        property string glassPreviewImage: ""
     }
 
     property string mode: preferences.appearanceMode
@@ -49,6 +50,7 @@ QtObject {
     property string glassSpotlightColor: preferences.glassSpotlightColor
     property string glassBaseColor: preferences.glassBaseColor
     property string glassPreviewBackground: preferences.glassPreviewBackground
+    property string glassPreviewImage: preferences.glassPreviewImage
 
     readonly property bool dark: mode === "Dark"
         || (mode === "System" && (style === "Industrial Dark" || style === "Aurora"
@@ -218,7 +220,8 @@ QtObject {
             glassGlowEnabled: glassGlowEnabled, glassSpotlightSize: glassSpotlightSize,
             glassSpotlightOpacity: glassSpotlightOpacity,
             glassSpotlightColor: glassSpotlightColor, glassBaseColor: glassBaseColor,
-            glassPreviewBackground: glassPreviewBackground
+            glassPreviewBackground: glassPreviewBackground,
+            glassPreviewImage: glassPreviewImage
         }
         var replaced = false
         for (var i = 0; i < items.length; ++i) {
@@ -256,6 +259,7 @@ QtObject {
             glassSpotlightColor = item.glassSpotlightColor || "#FFFFFF"
             glassBaseColor = item.glassBaseColor || "#FFFFFF"
             glassPreviewBackground = item.glassPreviewBackground || "#6B83A6"
+            glassPreviewImage = item.glassPreviewImage || ""
             return true
         }
         return false
@@ -284,6 +288,7 @@ QtObject {
         glassSpotlightColor = "#FFFFFF"
         glassBaseColor = "#FFFFFF"
         glassPreviewBackground = "#6B83A6"
+        glassPreviewImage = ""
     }
 
     function reset() {
@@ -313,4 +318,5 @@ QtObject {
     onGlassSpotlightColorChanged: preferences.glassSpotlightColor = glassSpotlightColor
     onGlassBaseColorChanged: preferences.glassBaseColor = glassBaseColor
     onGlassPreviewBackgroundChanged: preferences.glassPreviewBackground = glassPreviewBackground
+    onGlassPreviewImageChanged: preferences.glassPreviewImage = glassPreviewImage
 }

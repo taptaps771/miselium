@@ -181,3 +181,21 @@ async def test_selection_token_cannot_be_used_as_access_token(api_client):
             headers={"Authorization": f"Bearer {login.json()['selection_token']}"},
         )
     assert response.status_code == 401
+
+
+def test_m9_api_refuses_legacy_sqlite_database():
+    import pytest
+
+    with pytest.raises(RuntimeError, match="requires a PostgreSQL"):
+        create_m9_app(database_url="sqlite:///./legacy-m7.db")
+
+
+@pytest.mark.asyncio
+async def test_wrong_password_is_returned_as_generic_401(api_client):
+    async with api_client as client:
+        response = await client.post(
+            "/v1/auth/login",
+            json={"email": "member@example.com", "password": "incorrect password"},
+        )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Email or password is invalid."

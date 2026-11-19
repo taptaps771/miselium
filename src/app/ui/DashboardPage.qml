@@ -5,20 +5,22 @@ import QtQuick.Layouts
 Item {
     id: window
 
-    property color panelColor: "#111c2f"
-    property color borderColor: "#26364d"
-    property color accentColor: "#7dd3fc"
-    property color mutedColor: "#9aabc2"
+    required property var themeController
+    property color panelColor: themeController.panel
+    property color borderColor: themeController.border
+    property color accentColor: themeController.accent
+    property color mutedColor: themeController.muted
     property var hardwareRows: JSON.parse(appController.hardwareCapabilitiesJson)
 
     ScrollView {
+        id: dashboardScroll
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
 
         ColumnLayout {
             x: 32
-            width: Math.max(0, parent.width - 64)
+            width: Math.max(0, dashboardScroll.availableWidth - 64)
             spacing: 20
 
             Item { Layout.preferredHeight: 8 }
@@ -30,8 +32,8 @@ Item {
                 Rectangle {
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
-                    radius: 14
-                    color: "#12304a"
+                    radius: themeController.cardRadius
+                    color: themeController.selected
                     Label {
                         anchors.centerIn: parent
                         text: "C"
@@ -45,28 +47,32 @@ Item {
                     Layout.fillWidth: true
                     spacing: 3
                     Label {
+                        Layout.fillWidth: true
                         text: appController.appName
-                        color: "#f1f5f9"
+                        color: themeController.text
                         font.pixelSize: 25
                         font.bold: true
                     }
                     Label {
+                        Layout.fillWidth: true
                         text: "PySide6 · Qt Quick · Python · Application Foundation"
                         color: mutedColor
                         font.pixelSize: 13
+                        wrapMode: Text.WordWrap
                     }
                 }
 
                 Rectangle {
-                    radius: 20
-                    color: "#123b35"
-                    border.color: "#1d6655"
+                    visible: dashboardScroll.availableWidth >= 560
+                    radius: themeController.cardRadius
+                    color: themeController.panelInset
+                    border.color: themeController.border
                     Layout.preferredHeight: 32
                     Layout.preferredWidth: 112
                     Label {
                         anchors.centerIn: parent
                         text: "M3 · CAMERA & SCANNER"
-                        color: "#8be0c1"
+                        color: themeController.success
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -75,7 +81,7 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 20
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: intro.implicitHeight + 44
@@ -86,7 +92,7 @@ Item {
                     spacing: 10
                     Label {
                         text: "Fondasi aplikasi aktif"
-                        color: "#f8fafc"
+                        color: themeController.text
                         font.pixelSize: 22
                         font.bold: true
                     }
@@ -99,10 +105,10 @@ Item {
                     }
                     RowLayout {
                         spacing: 8
-                        Label { text: "●"; color: "#6ee7b7" }
+                        Label { text: "●"; color: themeController.success }
                         Label {
                             text: "Lifecycle: " + appController.lifecycleState
-                            color: "#a7f3d0"
+                            color: themeController.success
                             font.pixelSize: 12
                         }
                         Item { Layout.fillWidth: true }
@@ -138,7 +144,7 @@ Item {
                         required property var modelData
                         Layout.fillWidth: true
                         Layout.preferredHeight: 108
-                        radius: 16
+                        radius: themeController.cardRadius
                         color: panelColor
                         border.color: borderColor
                         ColumnLayout {
@@ -146,7 +152,7 @@ Item {
                             anchors.margins: 18
                             spacing: 7
                             Label { text: modelData.title; color: mutedColor; font.pixelSize: 12 }
-                            Label { text: modelData.value; color: "#f8fafc"; font.pixelSize: 20; font.bold: true }
+                            Label { text: modelData.value; color: themeController.text; font.pixelSize: 20; font.bold: true }
                             Label { text: modelData.detail; color: mutedColor; font.pixelSize: 11 }
                         }
                     }
@@ -178,7 +184,7 @@ Item {
                         required property var modelData
                         Layout.fillWidth: true
                         Layout.preferredHeight: 104
-                        radius: 16
+                        radius: themeController.cardRadius
                         color: panelColor
                         border.color: borderColor
                         ColumnLayout {
@@ -189,7 +195,7 @@ Item {
                             Label {
                                 Layout.fillWidth: true
                                 text: modelData.value
-                                color: "#f8fafc"
+                                color: themeController.text
                                 font.pixelSize: 14
                                 font.bold: true
                                 elide: Text.ElideMiddle
@@ -216,7 +222,7 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 18
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: halContent.implicitHeight + 36
@@ -231,7 +237,7 @@ Item {
                         Layout.fillWidth: true
                         Label {
                             text: "Capability registry · " + appController.hardwarePlatform
-                            color: "#f8fafc"
+                            color: themeController.text
                             font.pixelSize: 14
                             font.bold: true
                         }
@@ -263,8 +269,8 @@ Item {
                                 required property var modelData
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 58
-                                radius: 10
-                                color: "#0c1728"
+                                radius: themeController.controlRadius
+                                color: themeController.panelInset
                                 border.color: borderColor
                                 RowLayout {
                                     anchors.fill: parent
@@ -274,7 +280,7 @@ Item {
                                         Layout.preferredWidth: 7
                                         Layout.preferredHeight: 7
                                         radius: 4
-                                        color: "#94a3b8"
+                                        color: themeController.muted
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
@@ -282,7 +288,7 @@ Item {
                                         Label {
                                             Layout.fillWidth: true
                                             text: modelData.label
-                                            color: "#e2e8f0"
+                                            color: themeController.text
                                             font.pixelSize: 11
                                             elide: Text.ElideRight
                                         }

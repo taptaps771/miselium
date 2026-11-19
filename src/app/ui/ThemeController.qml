@@ -4,28 +4,274 @@ import QtCore
 QtObject {
     id: controller
 
-    // User preference is persisted locally by Qt. "System" follows the OS
-    // color scheme where Qt exposes it; otherwise it safely falls back to Light.
     property Settings preferences: Settings {
         category: "appearance"
-        property string themeMode: "System"
+        property string appearanceMode: "System"
+        property string visualStyle: "Industrial Professional"
+        property string colorPalette: "Office Blue"
+        property string brandColor: "#245EA8"
+        property string accentColor: "#3B82F6"
+        property string backgroundColor: "#F3F6FA"
+        property string borderColor: "#D7E0EA"
+        property string savedThemesJson: "[]"
     }
 
-    property string mode: preferences.themeMode
+    readonly property var availableStyles: [
+        "Industrial Professional",
+        "Minimalist",
+        "Claymorphism",
+        "Aurora",
+        "Brutalist",
+        "Industrial Dark"
+    ]
+
+    property string mode: preferences.appearanceMode
+    property string style: preferences.visualStyle
+    property string palette: preferences.colorPalette
+    property string brand: preferences.brandColor
+    property string accentAnchor: preferences.accentColor
+    property string backgroundAnchor: preferences.backgroundColor
+    property string borderAnchor: preferences.borderColor
+    property string savedThemesJson: preferences.savedThemesJson
+
     readonly property bool dark: mode === "Dark"
-                                 || (mode === "System"
-                                     && Qt.styleHints.colorScheme === Qt.ColorScheme.Dark)
+        || (mode === "System" && (style === "Industrial Dark" || style === "Aurora"
+            || Qt.styleHints.colorScheme === Qt.ColorScheme.Dark))
+    readonly property bool minimal: style === "Minimalist"
+    readonly property bool clay: style === "Claymorphism"
+    readonly property bool aurora: style === "Aurora"
+    readonly property bool brutalist: style === "Brutalist"
+    readonly property bool customAnchorsValid: isHex(brand) && isHex(accentAnchor)
+        && isHex(backgroundAnchor) && isHex(borderAnchor)
 
-    readonly property color window: dark ? "#171b20" : "#f3f5f7"
-    readonly property color surface: dark ? "#22282f" : "#ffffff"
-    readonly property color surfaceAlt: dark ? "#2b333c" : "#e9edf1"
-    readonly property color sidebar: dark ? "#202830" : "#e8edf2"
-    readonly property color text: dark ? "#edf1f5" : "#202a34"
-    readonly property color muted: dark ? "#a5b0bb" : "#65717d"
-    readonly property color border: dark ? "#3a4652" : "#d4dbe2"
-    readonly property color accent: dark ? "#8ab4f8" : "#245ea8"
-    readonly property color selected: dark ? "#35485c" : "#d9e6f5"
-    readonly property color status: dark ? "#9aa7b3" : "#687582"
+    readonly property var paletteCatalog: [
+        { name: "Office Blue", harmony: "Analogous", vibe: "Professional", compatibility: "Both", brand: "#245EA8", accent: "#3B82F6", background: "#F3F6FA", border: "#D7E0EA" },
+        { name: "Ocean Teal", harmony: "Analogous", vibe: "Minimal", compatibility: "Both", brand: "#087F8C", accent: "#31B7A8", background: "#EFF8F7", border: "#C9E2DF" },
+        { name: "Violet Focus", harmony: "Complementary", vibe: "Creative", compatibility: "Both", brand: "#6546A5", accent: "#D18BCB", background: "#F6F2FA", border: "#DED5EA" },
+        { name: "Warm Earth", harmony: "Analogous", vibe: "Organic", compatibility: "Light", brand: "#A65E2E", accent: "#D69A55", background: "#FBF5ED", border: "#E8D8C5" },
+        { name: "Forest System", harmony: "Analogous", vibe: "Organic", compatibility: "Both", brand: "#39734D", accent: "#8ABF78", background: "#F1F7F1", border: "#D3E2D2" },
+        { name: "Graphite Lime", harmony: "Complementary", vibe: "Industrial", compatibility: "Both", brand: "#374151", accent: "#A3C644", background: "#F3F5F4", border: "#D5DAD8" },
+        { name: "Aurora", harmony: "Triadic", vibe: "Aurora", compatibility: "Dark", brand: "#7356C5", accent: "#38C9C0", background: "#17182B", border: "#41415E" },
+        { name: "Clay Studio", harmony: "Split Complementary", vibe: "Clay", compatibility: "Light", brand: "#B86F62", accent: "#D9A66F", background: "#F7EEE8", border: "#E7D5CB" },
+        { name: "Brutalist Signal", harmony: "Complementary", vibe: "Brutalist", compatibility: "Both", brand: "#202020", accent: "#E9E13B", background: "#F4F1E8", border: "#B9B4A7" },
+        { name: "Arctic", harmony: "Monochromatic", vibe: "Minimal", compatibility: "Both", brand: "#426A83", accent: "#8CB8CC", background: "#F1F7FA", border: "#D1E0E8" },
+        { name: "Rose Quartz", harmony: "Analogous", vibe: "Creative", compatibility: "Light", brand: "#A84E72", accent: "#E49AB2", background: "#FBF1F5", border: "#EAD5DF" },
+        { name: "Midnight Mint", harmony: "Triadic", vibe: "Aurora", compatibility: "Dark", brand: "#2B8C83", accent: "#B1E6C9", background: "#152522", border: "#35524C" },
+        { name: "Retro Terminal", harmony: "Monochromatic", vibe: "Retro", compatibility: "Both", brand: "#6B4F3A", accent: "#D9A441", background: "#F5EBDD", border: "#DED1BD" },
+        { name: "Pastel Bloom", harmony: "Triadic", vibe: "Pastel", compatibility: "Light", brand: "#8B78B8", accent: "#E9A9B8", background: "#FAF4F8", border: "#E8DCE8" },
+        { name: "Neon Pulse", harmony: "Complementary", vibe: "Neon", compatibility: "Dark", brand: "#6C4DDB", accent: "#34E7D2", background: "#15152A", border: "#403B70" },
+        { name: "Monochrome Pro", harmony: "Monochromatic", vibe: "Monochrome", compatibility: "Both", brand: "#3D4652", accent: "#8995A3", background: "#F2F4F6", border: "#D5DAE0" },
+        { name: "Corporate Trust", harmony: "Complementary", vibe: "Corporate", compatibility: "Both", brand: "#1F527A", accent: "#D39B48", background: "#F2F6F9", border: "#D2DEE7" },
+        { name: "Citrus Lab", harmony: "Split Complementary", vibe: "Creative", compatibility: "Light", brand: "#597A36", accent: "#D8A83D", background: "#F7F8ED", border: "#DDE3C7" }
+    ]
 
-    onModeChanged: preferences.themeMode = mode
+    readonly property var activePalette: ({
+        name: palette,
+        brand: brand,
+        accent: accentAnchor,
+        background: backgroundAnchor,
+        border: borderAnchor
+    })
+
+    readonly property color accent: Qt.color(brand)
+    readonly property color window: dark ? (aurora ? "#101421" : "#171B20")
+        : (aurora ? "#F3F1FA" : (clay ? "#F7EEE8" : Qt.color(backgroundAnchor)))
+    readonly property color surface: dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
+        : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF"))
+    readonly property color surfaceAlt: dark ? (aurora ? "#252B40" : "#2B333C")
+        : (aurora ? "#EFECF7" : Qt.lighter(Qt.color(backgroundAnchor), 1.025))
+    readonly property color sidebar: dark ? (aurora ? "#171D2C" : "#202830")
+        : (aurora ? "#EAE7F5" : Qt.darker(Qt.color(backgroundAnchor), 1.025))
+    readonly property color panel: dark ? (aurora ? "#1D2335" : (clay ? "#2D2828" : "#22282F"))
+        : (aurora ? "#FCFBFF" : (clay ? "#F4E8DF" : "#FFFFFF"))
+    readonly property color panelInset: dark ? (aurora ? "#171D2C" : "#202830")
+        : (aurora ? "#EFECF7" : Qt.lighter(Qt.color(backgroundAnchor), 1.015))
+    readonly property color text: dark ? "#EDF1F5" : "#202A34"
+    readonly property color muted: dark ? "#A5B0BB" : "#65717D"
+    readonly property color border: brutalist ? Qt.color(brand)
+        : (dark ? (aurora ? "#3B4764" : "#3A4652")
+            : (aurora ? "#D8D2E8" : Qt.color(borderAnchor)))
+    readonly property color selected: dark
+        ? (aurora ? "#354365" : Qt.darker(accent, 2.2))
+        : (aurora ? "#E4DFF1" : Qt.lighter(accent, 1.65))
+    readonly property color status: dark ? "#9AA7B3" : "#687582"
+    readonly property color success: dark ? "#86D6A2" : "#287A49"
+    readonly property color warning: dark ? "#F2C36B" : "#986515"
+    readonly property color danger: dark ? "#F18B8B" : "#B33B3B"
+
+    readonly property int cornerRadius: brutalist ? 0 : (minimal ? 8 : 12)
+    readonly property int cardRadius: brutalist ? 0 : (clay ? 22 : (minimal ? 10 : 16))
+    readonly property int controlRadius: brutalist ? 0 : (minimal ? 6 : 8)
+
+    function isHex(value) {
+        return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value)
+    }
+
+    function luminance(hex) {
+        if (!isHex(hex))
+            return 0
+        var c = Qt.color(hex)
+        function channel(v) { return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+    }
+
+    function contrastRatio(first, second) {
+        var a = luminance(first)
+        var b = luminance(second)
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+    }
+
+    function normalizeStyle() {
+        if (availableStyles.indexOf(style) === -1)
+            style = "Industrial Professional"
+    }
+
+    function applyPalette(item) {
+        if (!item || !isHex(item.brand) || !isHex(item.accent)
+                || !isHex(item.background) || !isHex(item.border))
+            return false
+        palette = item.name
+        if (item.compatibility === "Dark")
+            mode = "Dark"
+        else if (item.compatibility === "Light")
+            mode = "Light"
+        brand = item.brand
+        accentAnchor = item.accent
+        backgroundAnchor = item.background
+        borderAnchor = item.border
+        return true
+    }
+
+    function filterPalettes(harmony, vibe, compatibility) {
+        var result = []
+        for (var i = 0; i < paletteCatalog.length; ++i) {
+            var item = paletteCatalog[i]
+            if (harmony !== "All" && item.harmony !== harmony)
+                continue
+            if (vibe !== "All" && item.vibe !== vibe)
+                continue
+            if (compatibility !== "Any" && item.compatibility !== "Both"
+                    && item.compatibility !== compatibility)
+                continue
+            result.push(item)
+        }
+        return result
+    }
+
+    function applyAnchor(anchor, hex) {
+        if (!isHex(hex))
+            return false
+        var normalized = hex.toUpperCase()
+        if (anchor === "brand")
+            brand = normalized
+        else if (anchor === "accent")
+            accentAnchor = normalized
+        else if (anchor === "background")
+            backgroundAnchor = normalized
+        else if (anchor === "border")
+            borderAnchor = normalized
+        else
+            return false
+        palette = "Custom"
+        return true
+    }
+
+    function applyCustomAnchors(brandHex, accentHex, backgroundHex, borderHex) {
+        if (!isHex(brandHex) || !isHex(accentHex)
+                || !isHex(backgroundHex) || !isHex(borderHex))
+            return false
+        palette = "Custom"
+        brand = brandHex.toUpperCase()
+        accentAnchor = accentHex.toUpperCase()
+        backgroundAnchor = backgroundHex.toUpperCase()
+        borderAnchor = borderHex.toUpperCase()
+        return true
+    }
+
+    function savedThemes() {
+        try {
+            var parsed = JSON.parse(savedThemesJson)
+            return Array.isArray(parsed) ? parsed : []
+        } catch (error) {
+            return []
+        }
+    }
+
+    function saveTheme(name) {
+        var cleanName = name.trim()
+        if (!cleanName.length)
+            return false
+        var items = savedThemes()
+        var snapshot = {
+            name: cleanName,
+            style: style,
+            mode: mode,
+            palette: palette,
+            brand: brand,
+            accent: accentAnchor,
+            background: backgroundAnchor,
+            border: borderAnchor
+        }
+        var replaced = false
+        for (var i = 0; i < items.length; ++i) {
+            if (items[i].name === cleanName) {
+                items[i] = snapshot
+                replaced = true
+                break
+            }
+        }
+        if (!replaced)
+            items.push(snapshot)
+        savedThemesJson = JSON.stringify(items)
+        return true
+    }
+
+    function applySavedTheme(name) {
+        var items = savedThemes()
+        for (var i = 0; i < items.length; ++i) {
+            var item = items[i]
+            if (item.name !== name)
+                continue
+            style = item.style || "Industrial Professional"
+            normalizeStyle()
+            mode = item.mode || "System"
+            palette = item.palette || "Custom"
+            if (isHex(item.brand) && isHex(item.accent)
+                    && isHex(item.background) && isHex(item.border)) {
+                brand = item.brand
+                accentAnchor = item.accent
+                backgroundAnchor = item.background
+                borderAnchor = item.border
+            }
+            return true
+        }
+        return false
+    }
+
+    function deleteSavedTheme(name) {
+        var items = savedThemes()
+        var filtered = []
+        for (var i = 0; i < items.length; ++i) {
+            if (items[i].name !== name)
+                filtered.push(items[i])
+        }
+        savedThemesJson = JSON.stringify(filtered)
+    }
+
+    function reset() {
+        mode = "System"
+        style = "Industrial Professional"
+        applyPalette(paletteCatalog[0])
+    }
+
+    Component.onCompleted: normalizeStyle()
+
+    onModeChanged: preferences.appearanceMode = mode
+    onStyleChanged: preferences.visualStyle = style
+    onPaletteChanged: preferences.colorPalette = palette
+    onBrandChanged: preferences.brandColor = brand
+    onAccentAnchorChanged: preferences.accentColor = accentAnchor
+    onBackgroundAnchorChanged: preferences.backgroundColor = backgroundAnchor
+    onBorderAnchorChanged: preferences.borderColor = borderAnchor
+    onSavedThemesJsonChanged: preferences.savedThemesJson = savedThemesJson
 }

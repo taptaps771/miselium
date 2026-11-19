@@ -12,7 +12,9 @@ ApplicationWindow {
     title: appController.appName
     color: theme.window
 
-    ThemeController { id: theme }
+    ThemeController {
+        id: theme
+    }
 
     readonly property bool compact: width < 720
     readonly property bool medium: width >= 720 && width < 1080
@@ -131,9 +133,9 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 currentIndex: window.currentPage
 
-                DashboardPage { }
-                CameraPage { }
-                SettingsPage { }
+                DashboardPage { themeController: theme }
+                CameraPage { themeController: theme }
+                SettingsPage { themeController: theme }
             }
         }
 

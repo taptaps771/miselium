@@ -7,12 +7,14 @@ import QtQuick.Dialogs
 
 Page {
     id: page
-    background: Rectangle { color: "#0b1220" }
+    required property var themeController
+    readonly property bool compact: width < 560
+    background: Rectangle { color: themeController.window }
 
-    property color panelColor: "#111c2f"
-    property color borderColor: "#26364d"
-    property color accentColor: "#7dd3fc"
-    property color mutedColor: "#9aabc2"
+    property color panelColor: themeController.panel
+    property color borderColor: themeController.border
+    property color accentColor: themeController.accent
+    property color mutedColor: themeController.muted
 
     MediaDevices { id: mediaDevices }
     CameraPermission { id: cameraPermission }
@@ -75,12 +77,13 @@ Page {
     }
 
     ScrollView {
+        id: cameraScroll
         anchors.fill: parent
         clip: true
         contentWidth: availableWidth
 
         ColumnLayout {
-            width: Math.max(0, parent.width - 48)
+            width: Math.max(0, cameraScroll.availableWidth - 48)
             x: 24
             spacing: 16
 
@@ -91,9 +94,11 @@ Page {
                 spacing: 4
                 Label {
                     text: "Camera & QR / Barcode Scanner"
-                    color: "#f8fafc"
-                    font.pixelSize: 24
+                    color: themeController.text
+                    font.pixelSize: page.compact ? 20 : 24
                     font.bold: true
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
                 }
                 Label {
                     text: "Preview menggunakan Qt Multimedia. Hasil foto diproses oleh decoder ZXing-C++ di worker thread."
@@ -106,8 +111,8 @@ Page {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 360
-                radius: 18
+                Layout.preferredHeight: page.compact ? 260 : 360
+                radius: themeController.cardRadius
                 color: "#050b14"
                 border.color: borderColor
                 clip: true
@@ -124,15 +129,18 @@ Page {
                     text: appController.cameraAvailable
                         ? "Kamera belum diaktifkan"
                         : "Perangkat kamera belum terdeteksi"
-                    color: "#cbd5e1"
+                    color: themeController.text
                     font.pixelSize: 14
                 }
             }
 
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                columns: page.compact ? 2 : 3
+                columnSpacing: 8
+                rowSpacing: 8
                 Button {
+                    Layout.fillWidth: true
                     text: camera.active ? "Matikan kamera" : "Aktifkan kamera"
                     onClicked: {
                         if (camera.active)
@@ -142,12 +150,14 @@ Page {
                     }
                 }
                 Button {
+                    Layout.fillWidth: true
                     text: "Ambil foto & scan"
                     enabled: camera.active && imageCapture.readyForCapture && !appController.scanBusy
                     onClicked: imageCapture.captureToFile(appController.createCameraCapturePath())
                 }
-                Item { Layout.fillWidth: true }
                 Button {
+                    Layout.fillWidth: true
+                    Layout.columnSpan: page.compact ? 2 : 1
                     text: "Pilih gambar"
                     enabled: !appController.scanBusy
                     onClicked: imagePicker.open()
@@ -156,7 +166,7 @@ Page {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 14
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: statusColumn.implicitHeight + 32
@@ -175,14 +185,14 @@ Page {
                     Label {
                         Layout.fillWidth: true
                         text: "Kamera: " + appController.cameraStatus
-                        color: "#e2e8f0"
+                        color: themeController.text
                         wrapMode: Text.WordWrap
                         font.pixelSize: 12
                     }
                     Label {
                         Layout.fillWidth: true
                         text: "Scanner: " + (appController.scannerAvailable ? "ZXing-C++ siap" : "Belum tersedia — pasang requirements/scanner.txt")
-                        color: appController.scannerAvailable ? "#86efac" : "#fbbf24"
+                        color: appController.scannerAvailable ? themeController.success : themeController.warning
                         wrapMode: Text.WordWrap
                         font.pixelSize: 12
                     }
@@ -190,7 +200,7 @@ Page {
                         Layout.fillWidth: true
                         visible: Qt.platform.os === "android" && cameraPermission.status === Qt.PermissionStatus.Denied
                         text: "Izin kamera ditolak. Izinkan akses kamera melalui pengaturan aplikasi Android."
-                        color: "#fbbf24"
+                        color: themeController.warning
                         wrapMode: Text.WordWrap
                         font.pixelSize: 12
                     }
@@ -199,7 +209,7 @@ Page {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 14
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: resultsColumn.implicitHeight + 32
@@ -237,8 +247,8 @@ Page {
                         delegate: Rectangle {
                             required property var modelData
                             Layout.fillWidth: true
-                            radius: 9
-                            color: "#0c1728"
+                            radius: themeController.controlRadius
+                            color: themeController.panelInset
                             border.color: borderColor
                             implicitHeight: resultLayout.implicitHeight + 20
                             ColumnLayout {
@@ -255,7 +265,7 @@ Page {
                                 Label {
                                     Layout.fillWidth: true
                                     text: modelData.value
-                                    color: "#f8fafc"
+                                    color: themeController.text
                                     wrapMode: Text.WrapAnywhere
                                     font.pixelSize: 13
                                 }

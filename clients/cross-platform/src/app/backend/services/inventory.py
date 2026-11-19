@@ -101,6 +101,7 @@ def post_inventory_document(
     actor_user_id: UUID,
     tenant_id: UUID,
     document_id: UUID,
+    _production_batch_id: UUID | None = None,
 ) -> InventoryPostingResult:
     """Atomically validate and post a draft document into the stock ledger.
 
@@ -110,6 +111,12 @@ def post_inventory_document(
     """
     _set_context(session, actor_user_id, tenant_id)
     _require_module_enabled(session, tenant_id, "inventory")
+    tenant_currency = session.execute(
+        text("SELECT default_currency FROM tenants WHERE id=:tenant_id"),
+        {"tenant_id": str(tenant_id)},
+    ).scalar_one_or_none()
+    if tenant_currency is None:
+        raise InventoryServiceError("Tenant currency could not be resolved.")
     try:
         document = session.execute(
             text(
@@ -151,9 +158,22 @@ def post_inventory_document(
         elif document_type in {"issue", "production_consumption"}:
             if source is None or destination is not None:
                 raise InventoryServiceError("This document requires a source warehouse only.")
-        elif document_type in {"receipt", "return", "recovery", "production_output"}:
+        elif document_type in {"receipt", "return", "recovery"}:
             if destination is None or source is not None:
                 raise InventoryServiceError("This document requires a destination warehouse only.")
+        elif document_type == "production_consumption":
+            if source is None or destination is not None:
+                raise InventoryServiceError("This document requires a source warehouse only.")
+            if (
+                _production_batch_id is None
+                or document["source_reference_type"] != "production_batch"
+                or str(document["source_reference_id"]) != str(_production_batch_id)
+            ):
+                raise InventoryServiceError(
+                    "Production consumption must be posted through its linked batch service."
+                )
+        elif document_type == "production_output":
+            raise InventoryServiceError("Production output requires the production-output service.")
         else:
             raise InventoryServiceError("Unsupported inventory document type.")
 
@@ -211,6 +231,8 @@ def post_inventory_document(
             item_id = UUID(str(line["item_id"]))
             lot_id = UUID(str(line["lot_id"])) if line["lot_id"] else None
             base_quantity = Decimal(line["base_quantity"])
+            if str(line["currency"]).strip() != str(tenant_currency).strip():
+                raise InventoryServiceError("Inventory documents must use the tenant's base currency.")
             if not bool(line["item_is_active"]):
                 raise InventoryServiceError("Inactive inventory items cannot be moved.")
             base_unit_id = UUID(str(line["base_unit_id"]))
@@ -737,6 +759,7 @@ def consume_production_materials(
             actor_user_id=actor_user_id,
             tenant_id=tenant_id,
             document_id=inventory_document_id,
+            _production_batch_id=batch_id,
         )
         rows = session.execute(
             text(

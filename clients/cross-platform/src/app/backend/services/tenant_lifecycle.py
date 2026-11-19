@@ -243,7 +243,7 @@ def verify_global_email(session: Session, *, token: str) -> UUID:
             )
             VALUES (
                 :user_id, 'global_identity.email_verified', 'global_user', :user_id,
-                jsonb_build_object('contact_point_id', :contact_id)
+                jsonb_build_object('contact_point_id', CAST(:contact_id AS uuid))
             )
             """
         ),

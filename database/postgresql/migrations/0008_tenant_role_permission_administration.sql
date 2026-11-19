@@ -198,7 +198,8 @@ BEGIN
        WHERE am.tenant_id=p_tenant_id AND am.user_id=p_actor_user_id
          AND am.status='active' AND ap.code=p.code
      );
-  IF v_known_count<>v_requested_count THEN
+  IF v_known_count<>v_requested_count
+     OR cardinality(p_permission_codes)<>v_requested_count THEN
     RAISE EXCEPTION 'unknown or duplicate permission code' USING ERRCODE='22023';
   END IF;
   IF v_grantable_count<>v_requested_count THEN
@@ -209,6 +210,20 @@ BEGIN
   INSERT INTO tenant_role_permissions(tenant_id,role_id,permission_id)
   SELECT p_tenant_id,p_role_id,p.id
     FROM tenant_permissions p WHERE p.code=ANY(p_permission_codes);
+
+  -- Never let a manager remove their own final path to role administration.
+  IF NOT EXISTS (
+    SELECT 1
+      FROM tenant_memberships am
+      JOIN membership_role_assignments aa ON aa.tenant_id=am.tenant_id AND aa.membership_id=am.id
+      JOIN tenant_role_permissions arp ON arp.tenant_id=aa.tenant_id AND arp.role_id=aa.role_id
+      JOIN tenant_permissions ap ON ap.id=arp.permission_id
+     WHERE am.tenant_id=p_tenant_id AND am.user_id=p_actor_user_id
+       AND am.status='active' AND ap.code='tenant.roles.manage'
+  ) THEN
+    RAISE EXCEPTION 'actor cannot remove their final role administration permission' USING ERRCODE='23514';
+  END IF;
+
   SELECT COALESCE(array_agg(requested.code ORDER BY requested.code),ARRAY[]::text[]) INTO v_after
     FROM unnest(p_permission_codes) AS requested(code);
 

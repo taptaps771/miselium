@@ -100,6 +100,7 @@ GRANT SELECT, INSERT, UPDATE ON inventory_document_lines TO miselium_app;
 GRANT SELECT, INSERT ON inventory_ledger_entries TO miselium_app;
 GRANT SELECT ON inventory_items, inventory_item_units, inventory_lots, warehouses TO miselium_app;
 GRANT SELECT ON production_batches, modules, tenant_modules TO miselium_app;
+GRANT SELECT (default_currency) ON tenants TO miselium_app;
 GRANT SELECT, INSERT ON production_batch_consumptions TO miselium_app;
 GRANT INSERT ON tenant_audit_events TO miselium_app;
 

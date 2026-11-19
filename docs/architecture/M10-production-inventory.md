@@ -26,7 +26,7 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 - Incubation duration is configurable per record. Do not hardcode 30 days.
 - Production lots connect outputs to batches and varieties. Kumbung placement is a signed event ledger; capacity and available quantities are checked transactionally.
 - Every production loss records stage, reason, quantity and disposition. `press_baglog` is a supported loss stage after migration 0013. Recovery creates a new traceable lot and cost record; it never silently restores the source lot.
-- Migration 0013 adds immutable `production_press_outputs` records. Each press pass records processed, good and rejected quantities with the invariant `processed = good + rejected`; only good output is eligible for production-output posting. Migration 0014 strengthens the insert guard: the machine must be active, share the batch production unit, and use the batch output unit; batch and machine rows are locked during validation.
+- Migration 0013 adds immutable `production_press_outputs` records. Each press pass records processed, good and rejected quantities with the invariant `processed = good + rejected`; only good output is eligible for production-output posting. Migration 0014 strengthens the insert guard: the machine must be active, share the batch production unit, and use the batch output unit, using the tenant-scoped records visible to the runtime role.
 - Material cost comes from actual posted consumption entries. Finalized production cost snapshots freeze material cost, overhead (zero until later allocation), total, output quantity, unit cost and currency. Later overhead is a separate adjustment/allocation, not a rewrite.
 
 ## Application services and API

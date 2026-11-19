@@ -49,7 +49,7 @@ def _raise_db_error(exc: DBAPIError) -> None:
     state = _sqlstate(exc)
     if state == "42501":
         raise TenantRolePermissionDenied("Tenant role permission is required.") from None
-    if state in {"P0002", "22023", "23505"}:
+    if state in {"P0002", "22023", "23505", "23514"}:
         raise TenantRoleError("The requested tenant role operation is invalid.") from None
     raise exc
 

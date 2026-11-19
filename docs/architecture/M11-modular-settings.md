@@ -121,7 +121,7 @@ Recipe versions are immutable once used. A changed recipe creates a new version.
 There is no separate Preparation stage and no separate Cooling stage.
 
 - Preparation/setup belongs in Settings and master data.
-- Cooling remains a real-world interval, but it is not a separately configurable production form/stage. Sterilization records retain start/end timestamps and relevant cooling-ready metadata/events; the service blocks inoculation until the configured readiness condition is satisfied.
+- Cooling remains a real-world interval, but it is not a separately configurable production form/stage. The sterilizer retains its configured cooling duration; each sterilization run records its completion timestamp and optional cooling_completed_at/cooling_notes fields. The service blocks inoculation until the configured minimum duration has elapsed and cooling completion has been recorded.
 - Production stage order is Mixing → Press Baglog → Sterilization → Inoculation → Incubation → Kumbung placement → Reconciliation.
 - The Mixing estimate never creates baglog stock. Press records actual quantity and is the first stage that can create actual baglog output, subject to the approved inventory posting contract.
 

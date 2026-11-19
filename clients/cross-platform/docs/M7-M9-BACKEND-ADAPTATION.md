@@ -13,6 +13,7 @@ The canonical schema remains authoritative:
 - M10: `database/postgresql/migrations/0002_production_inventory.sql`
 - M9 RBAC/invitation compatibility: `database/postgresql/migrations/0003_tenant_rbac_invitation_roles.sql`
 - M9 authenticated membership discovery: `database/postgresql/migrations/0004_authenticated_membership_discovery.sql`
+- Restricted runtime-role authentication grants: `database/postgresql/roles/0001_miselium_app_auth_read.sql`
 
 The existing M7 backend remains isolated until the adapter and PostgreSQL integration tests are implemented. No existing database or data is to be reset or deleted.
 
@@ -51,7 +52,7 @@ The service boundary includes:
 - `authenticate_global_user(...)` verifies one global password identity and returns only that user's active tenant options.
 - `authorize_tenant_context(...)` re-checks active account, tenant, and membership state, then resolves permissions from tenant RBAC.
 
-The M9 API is intentionally a separate ASGI factory from the legacy M7 API. It requires PostgreSQL and refuses the legacy SQLite fallback. Route tests currently use a fake repository/session; the next validation step is exercising these routes against PostgreSQL with the restricted runtime role and pooled connections.
+The M9 API is intentionally a separate ASGI factory from the legacy M7 API. It requires PostgreSQL and refuses the legacy SQLite fallback. Route tests cover the state transition with a fake repository/session. A separate PostgreSQL integration test now seeds a canonical global identity and exercises login, tenant selection, and `/v1/me` through the restricted `miselium_app` database role. Pooled-connection reuse and rollback isolation remain additional hardening tests.
 
 Migration `0004_authenticated_membership_discovery.sql` adds transaction-local `app.user_id` context and a narrowly scoped RLS SELECT policy that lets a user discover only their own tenant memberships before a tenant has been selected. Membership writes remain restricted to the selected `app.tenant_id`. The API must set `app.user_id` only after global authentication, inside the same transaction, and must never accept it from a client payload.
 
@@ -119,7 +120,7 @@ Do not mark the adapter complete until all of these pass against PostgreSQL 16+ 
 - [x] Password authentication uses global auth identity and verified contact points (API unit tests; PostgreSQL runtime integration still pending).
 - [ ] Suspended users, suspended memberships, and non-active tenants fail closed.
 - [x] Authenticated membership discovery is RLS-scoped to the current global user before tenant selection.
-- [x] A user cannot select a tenant without an active membership (API unit test; PostgreSQL runtime integration still pending).
+- [x] A user cannot select a tenant without an active membership (API unit test plus PostgreSQL runtime integration).
 - [ ] Tenant Admin cannot create platform roles, activate modules, or change plans.
 - [ ] Role assignment is tenant-safe through composite foreign keys.
 - [ ] Invitation acceptance is one-time, expiry-safe, email-verified, and atomic.

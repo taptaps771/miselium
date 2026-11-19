@@ -87,7 +87,7 @@ def test_m10_inventory_posting_transfer_reversal_and_production_consumption():
                 text(
                     """
                     INSERT INTO production_units(id, tenant_id, location_id, code, name)
-                    VALUES (:id, :tenant_id, 'MIX', 'Mixing')
+                    VALUES (:id, :tenant_id, :location_id, 'MIX', 'Mixing')
                     """
                 ),
                 {"id": production_unit_id, "tenant_id": tenant_id, "location_id": location_id},

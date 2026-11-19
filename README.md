@@ -1,4 +1,6 @@
-# Miselium — Cross-platform client and SaaS foundation
+# Miselium
+
+Miselium is a multi-tenant SaaS platform with a cross-platform desktop/mobile application, a separately deployed FastAPI backend, and PostgreSQL data services. The repository root is the application workspace; `src/`, `tests/`, `scripts/`, and `platforms/` are first-class project directories.
 
 Miselium is a Python 3.14 + PySide6 6.12.0 + Qt Quick/QML application with a separate FastAPI multi-tenant backend. The architecture targets Linux, Windows, and Android clients while keeping business logic and hardware contracts platform-neutral.
 
@@ -58,7 +60,7 @@ alembic upgrade head
 uvicorn app.backend.main:app --app-dir src --reload --host 127.0.0.1 --port 8000
 ```
 
-For PostgreSQL, use `postgresql+psycopg://...` as the database URL. Production deployments must run migrations as a release step, use TLS, a secret manager, rate limiting, backups, monitoring, and a managed PostgreSQL service. See `docs/M7-SAAS-BACKEND.md`.
+For PostgreSQL, use `postgresql+psycopg://...` as the database URL. Production deployments must run migrations as a release step, use TLS, a secret manager, rate limiting, backups, monitoring, and a managed PostgreSQL service. See `docs/client/M7-SAAS-BACKEND.md`.
 
 ## Desktop packaging
 
@@ -114,4 +116,4 @@ tests/                 # client/HAL/backend tests
 
 Every tenant-owned table must carry a non-null `tenant_id`; every query must scope by the authenticated membership's tenant. The example resource endpoints are tested against cross-tenant access. PostgreSQL Row-Level Security is not yet enabled. Passwords use scrypt and access tokens use short-lived JWTs; production still requires refresh-token rotation, email verification, throttling, audit/observability, secret management, provider integrations, and security review.
 
-See `docs/ARCHITECTURE.md`, `docs/HARDWARE-API.md`, `docs/PERMISSIONS.md`, `docs/M4-LOCATION-BLE.md`, `docs/M5-ANDROID-BRIDGES.md`, `docs/M6-NOTIFICATIONS.md`, `docs/M7-SAAS-BACKEND.md`, `docs/M8-QA-PACKAGING.md`, and `docs/SECURITY-TENANCY.md`.
+See `docs/client/ARCHITECTURE.md`, `docs/client/HARDWARE-API.md`, `docs/client/PERMISSIONS.md`, `docs/client/M4-LOCATION-BLE.md`, `docs/client/M5-ANDROID-BRIDGES.md`, `docs/client/M6-NOTIFICATIONS.md`, `docs/client/M7-SAAS-BACKEND.md`, `docs/client/M8-QA-PACKAGING.md`, and `docs/client/SECURITY-TENANCY.md`.

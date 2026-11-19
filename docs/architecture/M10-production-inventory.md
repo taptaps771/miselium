@@ -30,14 +30,15 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 
 ## Application services and API
 
-Migration `0011_m10_inventory_application_services.sql` adds the M10 tenant permission vocabulary and restricted runtime grants. Existing owner/admin roles receive inventory and production management permissions; custom roles must be granted only permissions held by their administrator.
+Migration `0011_m10_inventory_application_services.sql` seeds the `inventory` and `production` module catalog, adds the M10 tenant permission vocabulary and restricted runtime grants. Existing owner/admin roles receive inventory and production management permissions; custom roles must be granted only permissions held by their administrator. Module activation remains a Platform Admin operation: the services reject work unless the tenant has an enabled `tenant_modules` entitlement for the relevant module.
 
 The PostgreSQL-backed service module is `clients/cross-platform/src/app/backend/services/inventory.py`:
 
 - `post_inventory_document` validates the document type, warehouse direction, line/lot consistency and stock policy; locks the document and each affected stock key; calculates outbound moving-average value; updates draft snapshots; posts the document; appends ledger rows; and writes an audit event in one caller-owned transaction.
 - `transfer` posting writes equal and opposite quantity/value movements for the source and destination warehouses under the same locks.
 - `reverse_inventory_document` creates a linked reversal document and exact inverse ledger entries. A partial reversal is not supported. A reversal that would make a non-negative item negative is rejected. The original posted timestamp and ledger remain preserved; the original status transitions to `reversed`.
-- `consume_production_materials` posts a production-consumption issue and creates one immutable-cost consumption record per document line, linked to the selected batch.
+- `consume_production_materials` posts a production-consumption issue and creates one immutable-cost consumption record per document line, linked to the selected batch. A database trigger independently verifies that each record matches a posted outbound ledger line and prevents later mutation.
+- Posting validates the tenant base currency, active warehouses/items, configured unit-conversion snapshots, and lot status/expiry. Generic posting cannot bypass the batch-linked production-consumption service.
 
 API routes:
 

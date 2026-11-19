@@ -252,7 +252,13 @@ QtObject {
             style = item.style || "Industrial Professional"
             mode = item.mode || "System"
             palette = item.palette || "Custom"
-            applyCustomAnchors(item.brand, item.accent, item.background, item.border)
+            if (isHex(item.brand) && isHex(item.accent)
+                    && isHex(item.background) && isHex(item.border)) {
+                brand = item.brand
+                accentAnchor = item.accent
+                backgroundAnchor = item.background
+                borderAnchor = item.border
+            }
             glassBlur = Number(item.glassBlur)
             glassOpacity = Number(item.glassOpacity)
             glassBorderOpacity = Number(item.glassBorderOpacity)

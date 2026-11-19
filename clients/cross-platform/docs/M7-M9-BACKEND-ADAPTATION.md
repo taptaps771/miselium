@@ -1,6 +1,6 @@
 # M7 → M9 Backend Adaptation Contract
 
-Status: architecture contract plus additive RBAC migration; runtime adapter remains incomplete.
+Status: M9 authentication and registration/tenant-lifecycle API implemented as a separate PostgreSQL runtime; integration validation and legacy M7 retirement remain in progress.
 Target: canonical PostgreSQL 16+ schema in `database/postgresql/migrations/`.
 Preserved prototype: `clients/cross-platform/src/app/backend/`.
 

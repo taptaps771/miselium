@@ -712,11 +712,15 @@ def consume_production_materials(
     _require_module_enabled(session, tenant_id, "inventory")
     _require_module_enabled(session, tenant_id, "production")
     try:
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": f"{tenant_id}:production_batch:{batch_id}"},
+        )
         batch = session.execute(
             text(
                 """
                 SELECT id, status FROM production_batches
-                 WHERE tenant_id=:tenant_id AND id=:batch_id FOR UPDATE
+                 WHERE tenant_id=:tenant_id AND id=:batch_id
                 """
             ),
             {"tenant_id": str(tenant_id), "batch_id": str(batch_id)},

@@ -250,8 +250,9 @@ def create_m9_app(
                 display_name=payload.display_name,
             )
             verification_sender(challenge.email, challenge.raw_token)
-        except RegistrationError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except RegistrationError:
+            # Do not reveal whether an email already has a global account.
+            return RegistrationAcceptedResponse()
         except (ValueError, RuntimeError):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

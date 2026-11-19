@@ -349,9 +349,9 @@ BEGIN
     v_invitation.role_id, v_invitation.invited_by
   );
 
-  DELETE FROM membership_location_scopes
-   WHERE tenant_id = v_invitation.tenant_id
-     AND membership_id = v_membership_id;
+  DELETE FROM membership_location_scopes AS location_scope
+   WHERE location_scope.tenant_id = v_invitation.tenant_id
+     AND location_scope.membership_id = v_membership_id;
 
   SELECT id INTO v_primary_location
     FROM locations

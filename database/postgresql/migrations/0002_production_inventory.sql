@@ -310,15 +310,19 @@ BEGIN
    END IF;
    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
  END IF;
- IF TG_OP='DELETE' THEN
-   v_tenant:=OLD.tenant_id; v_document:=OLD.document_id;
- ELSE
-   v_tenant:=NEW.tenant_id; v_document:=NEW.document_id;
+ IF TG_OP IN ('UPDATE','DELETE') THEN
+   SELECT status INTO v_status FROM inventory_documents
+    WHERE tenant_id=OLD.tenant_id AND id=OLD.document_id;
+   IF v_status='posted' THEN
+     RAISE EXCEPTION 'Lines of posted inventory document are immutable' USING ERRCODE='55000';
+   END IF;
  END IF;
- SELECT status INTO v_status FROM inventory_documents
-  WHERE tenant_id=v_tenant AND id=v_document;
- IF v_status='posted' THEN
-   RAISE EXCEPTION 'Lines of posted inventory document are immutable' USING ERRCODE='55000';
+ IF TG_OP IN ('INSERT','UPDATE') THEN
+   SELECT status INTO v_status FROM inventory_documents
+    WHERE tenant_id=NEW.tenant_id AND id=NEW.document_id;
+   IF v_status='posted' THEN
+     RAISE EXCEPTION 'Lines of posted inventory document are immutable' USING ERRCODE='55000';
+   END IF;
  END IF;
  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;

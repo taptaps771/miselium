@@ -60,6 +60,10 @@ AS $m9_invite_create$
 DECLARE
   v_id uuid;
 BEGIN
+  IF current_app_user_id() IS DISTINCT FROM p_actor_user_id THEN
+    RAISE EXCEPTION 'authenticated actor context mismatch' USING ERRCODE = '42501';
+  END IF;
+
   IF p_email_normalized IS NULL OR length(trim(p_email_normalized)) < 3
      OR length(p_email_normalized) > 320
      OR p_token_hash !~ '^[0-9a-f]{64}$'
@@ -144,6 +148,10 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $m9_invite_list$
 BEGIN
+  IF current_app_user_id() IS DISTINCT FROM p_actor_user_id THEN
+    RAISE EXCEPTION 'authenticated actor context mismatch' USING ERRCODE = '42501';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
       FROM tenant_memberships m
@@ -188,6 +196,10 @@ AS $m9_invite_revoke$
 DECLARE
   v_email text;
 BEGIN
+  IF current_app_user_id() IS DISTINCT FROM p_actor_user_id THEN
+    RAISE EXCEPTION 'authenticated actor context mismatch' USING ERRCODE = '42501';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
       FROM tenant_memberships m
@@ -239,6 +251,10 @@ DECLARE
   v_existing_status text;
   v_primary_location uuid;
 BEGIN
+  IF current_app_user_id() IS DISTINCT FROM p_user_id THEN
+    RAISE EXCEPTION 'authenticated user context mismatch' USING ERRCODE = '42501';
+  END IF;
+
   IF p_token_hash !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'invalid invitation token' USING ERRCODE = '22023';
   END IF;

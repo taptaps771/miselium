@@ -59,6 +59,14 @@ from app.backend.services.authentication import (
     authenticate_global_user,
     authorize_tenant_context,
 )
+from app.backend.services.tenant_roles import (
+    TenantRoleError,
+    TenantRolePermissionDenied,
+    create_role,
+    list_permission_catalog,
+    list_roles,
+    set_role_permissions,
+)
 
 
 class LoginRequest(BaseModel):
@@ -144,6 +152,32 @@ class TenantMemberResponse(BaseModel):
     status: str
     joined_at: Any | None
     roles: list[str]
+
+class TenantRoleCreateRequest(BaseModel):
+    code: str = Field(min_length=2, max_length=60, pattern=r"^[a-z][a-z0-9_-]{1,59}$")
+    name: str = Field(min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class TenantRoleResponse(BaseModel):
+    role_id: UUID
+    code: str
+    name: str
+    is_system: bool
+    permissions: list[str]
+    member_count: int
+
+
+class TenantPermissionResponse(BaseModel):
+    code: str
+    description: str | None
+    actor_can_grant: bool
+
+
+class TenantRolePermissionsRequest(BaseModel):
+    permission_codes: list[str] = Field(max_length=300)
+    reason: str | None = Field(default=None, max_length=1000)
+
 
 
 class RegistrationAcceptedResponse(BaseModel):
@@ -748,6 +782,135 @@ def create_m9_app(
         except MembershipAdminPermissionDenied:
             raise HTTPException(status_code=403, detail="Tenant membership management permission required.") from None
         except MembershipAdminError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    @application.get(
+        "/v1/tenants/{tenant_id}/roles",
+        response_model=list[TenantRoleResponse],
+    )
+    def tenant_roles(
+        tenant_id: UUID,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> list[TenantRoleResponse]:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.roles.read" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant role read permission required.")
+        try:
+            roles = list_roles(db, actor_user_id=user_id, tenant_id=tenant_id)
+        except TenantRolePermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant role read permission required.") from None
+        return [
+            TenantRoleResponse(
+                role_id=item.role_id,
+                code=item.code,
+                name=item.name,
+                is_system=item.is_system,
+                permissions=list(item.permissions),
+                member_count=item.member_count,
+            )
+            for item in roles
+        ]
+
+    @application.get(
+        "/v1/tenants/{tenant_id}/permissions",
+        response_model=list[TenantPermissionResponse],
+    )
+    def tenant_permission_catalog(
+        tenant_id: UUID,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> list[TenantPermissionResponse]:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.roles.read" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant role read permission required.")
+        try:
+            permissions = list_permission_catalog(
+                db, actor_user_id=user_id, tenant_id=tenant_id
+            )
+        except TenantRolePermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant role read permission required.") from None
+        return [
+            TenantPermissionResponse(
+                code=item.code,
+                description=item.description,
+                actor_can_grant=item.actor_can_grant,
+            )
+            for item in permissions
+        ]
+
+    @application.post(
+        "/v1/tenants/{tenant_id}/roles",
+        response_model=TenantRoleResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_tenant_role(
+        tenant_id: UUID,
+        payload: TenantRoleCreateRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> TenantRoleResponse:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.roles.manage" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant role management permission required.")
+        try:
+            role_id = create_role(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                code=payload.code,
+                name=payload.name,
+                reason=payload.reason,
+            )
+            roles = list_roles(db, actor_user_id=user_id, tenant_id=tenant_id)
+            role = next(item for item in roles if item.role_id == role_id)
+        except TenantRolePermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant role management permission required.") from None
+        except (TenantRoleError, StopIteration) as exc:
+            raise HTTPException(status_code=409, detail=str(exc) or "Tenant role could not be created.") from None
+        return TenantRoleResponse(
+            role_id=role.role_id,
+            code=role.code,
+            name=role.name,
+            is_system=role.is_system,
+            permissions=list(role.permissions),
+            member_count=role.member_count,
+        )
+
+    @application.put(
+        "/v1/tenants/{tenant_id}/roles/{role_id}/permissions",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def update_tenant_role_permissions(
+        tenant_id: UUID,
+        role_id: UUID,
+        payload: TenantRolePermissionsRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> None:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.roles.manage" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant role management permission required.")
+        try:
+            set_role_permissions(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                role_id=role_id,
+                permission_codes=payload.permission_codes,
+                reason=payload.reason,
+            )
+        except TenantRolePermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant role management permission required.") from None
+        except TenantRoleError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
 
     return application

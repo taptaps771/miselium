@@ -108,7 +108,7 @@ Page {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 360
-                radius: 18
+                radius: themeController.cardRadius
                 color: "#050b14"
                 border.color: borderColor
                 clip: true
@@ -125,7 +125,7 @@ Page {
                     text: appController.cameraAvailable
                         ? "Kamera belum diaktifkan"
                         : "Perangkat kamera belum terdeteksi"
-                    color: "#cbd5e1"
+                    color: themeController.text
                     font.pixelSize: 14
                 }
             }
@@ -157,7 +157,7 @@ Page {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 14
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: statusColumn.implicitHeight + 32
@@ -200,7 +200,7 @@ Page {
 
             Rectangle {
                 Layout.fillWidth: true
-                radius: 14
+                radius: themeController.cardRadius
                 color: panelColor
                 border.color: borderColor
                 implicitHeight: resultsColumn.implicitHeight + 32
@@ -238,7 +238,7 @@ Page {
                         delegate: Rectangle {
                             required property var modelData
                             Layout.fillWidth: true
-                            radius: 9
+                            radius: themeController.controlRadius
                             color: themeController.panelInset
                             border.color: borderColor
                             implicitHeight: resultLayout.implicitHeight + 20

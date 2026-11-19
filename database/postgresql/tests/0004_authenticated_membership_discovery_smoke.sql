@@ -14,9 +14,9 @@ BEGIN
     (v_user_a, 'm9-user-a-' || replace(v_user_a::text, '-', '')),
     (v_user_b, 'm9-user-b-' || replace(v_user_b::text, '-', ''));
 
-  INSERT INTO tenants(id, code, name, status) VALUES
-    (v_tenant_a, 'M9UA-' || left(replace(v_tenant_a::text, '-', ''), 8), 'User A Tenant A', 'active'),
-    (v_tenant_b, 'M9UB-' || left(replace(v_tenant_b::text, '-', ''), 8), 'User A Tenant B', 'active');
+  INSERT INTO tenants(id, code, name, status, approved_at, approval_reason) VALUES
+    (v_tenant_a, 'M9UA-' || left(replace(v_tenant_a::text, '-', ''), 8), 'User A Tenant A', 'active', now(), 'CI fixture'),
+    (v_tenant_b, 'M9UB-' || left(replace(v_tenant_b::text, '-', ''), 8), 'User A Tenant B', 'active', now(), 'CI fixture');
 
   INSERT INTO tenant_memberships(tenant_id, user_id, status, joined_at) VALUES
     (v_tenant_a, v_user_a, 'active', now()),

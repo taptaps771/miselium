@@ -29,6 +29,17 @@ from app.backend.security.m9_tokens import (
     decode_m9_access_token,
     decode_tenant_selection_token,
 )
+from app.backend.services.tenant_lifecycle import (
+    PlatformPermissionDenied,
+    RegistrationError,
+    TenantLifecycleError,
+    VerificationError,
+    approve_tenant_registration,
+    list_pending_tenants,
+    register_global_user,
+    request_tenant_registration,
+    verify_global_email,
+)
 from app.backend.services.authentication import (
     authenticate_global_user,
     authorize_tenant_context,
@@ -38,6 +49,57 @@ from app.backend.services.authentication import (
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=256)
+
+
+class RegistrationRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=256)
+    display_name: str = Field(min_length=1, max_length=160)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+
+
+class TenantRegistrationRequest(BaseModel):
+    code: str = Field(min_length=3, max_length=40)
+    name: str = Field(min_length=1, max_length=180)
+    legal_name: str | None = Field(default=None, max_length=220)
+    primary_location_code: str = Field(default="MAIN", min_length=1, max_length=50)
+    primary_location_name: str = Field(default="Lokasi Utama", min_length=1, max_length=150)
+    primary_location_address: str | None = None
+
+
+class TenantApprovalRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class RegistrationAcceptedResponse(BaseModel):
+    status: str = "verification_required"
+    message: str = "Check your email for the verification link."
+
+
+class EmailVerifiedResponse(BaseModel):
+    status: str = "verified"
+    selection_token: str
+    token_type: str = "bearer"
+    expires_in: int = 300
+
+
+class TenantRegistrationResponse(BaseModel):
+    tenant_id: UUID
+    code: str
+    name: str
+    status: str
+    location_id: UUID
+    membership_id: UUID
+
+
+class PendingTenantResponse(BaseModel):
+    tenant_id: UUID
+    code: str
+    name: str
+    created_at: Any
 
 
 class SelectTenantRequest(BaseModel):
@@ -86,6 +148,7 @@ def create_m9_app(
     database_url: str | None = None,
     session_factory: sessionmaker[Session] | None = None,
     repository_factory: RepositoryFactory = M9IdentityRepository,
+    verification_sender: Callable[[str, str], None] | None = None,
 ) -> FastAPI:
     """Build M9 API; require PostgreSQL and never fall back to the M7 SQLite DB."""
     if session_factory is None:
@@ -164,6 +227,132 @@ def create_m9_app(
     @application.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "miselium-m9-identity-api"}
+
+    @application.post(
+        "/v1/auth/register",
+        response_model=RegistrationAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def register(
+        payload: RegistrationRequest,
+        db: Session = Depends(db_session),
+    ) -> RegistrationAcceptedResponse:
+        if verification_sender is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Email verification delivery is not configured.",
+            )
+        try:
+            challenge = register_global_user(
+                db,
+                email=str(payload.email),
+                password=payload.password,
+                display_name=payload.display_name,
+            )
+            verification_sender(challenge.email, challenge.raw_token)
+        except RegistrationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except (ValueError, RuntimeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Registration could not be completed.",
+            ) from None
+        return RegistrationAcceptedResponse()
+
+    @application.post("/v1/auth/verify-email", response_model=EmailVerifiedResponse)
+    def verify_email(
+        payload: VerifyEmailRequest,
+        db: Session = Depends(db_session),
+    ) -> EmailVerifiedResponse:
+        try:
+            user_id = verify_global_email(db, token=payload.token)
+        except VerificationError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification token is invalid or expired.",
+            ) from None
+        return EmailVerifiedResponse(
+            selection_token=create_tenant_selection_token(user_id=user_id)
+        )
+
+    @application.post(
+        "/v1/tenants",
+        response_model=TenantRegistrationResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_tenant_request(
+        payload: TenantRegistrationRequest,
+        user_id: UUID = Depends(selection_user),
+        db: Session = Depends(db_session),
+    ) -> TenantRegistrationResponse:
+        try:
+            result = request_tenant_registration(
+                db,
+                user_id=user_id,
+                tenant_code=payload.code,
+                tenant_name=payload.name,
+                legal_name=payload.legal_name,
+                location_code=payload.primary_location_code,
+                location_name=payload.primary_location_name,
+                address=payload.primary_location_address,
+            )
+        except TenantLifecycleError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        return TenantRegistrationResponse(
+            tenant_id=result.tenant_id,
+            code=result.tenant_code,
+            name=result.tenant_name,
+            status=result.status,
+            location_id=result.location_id,
+            membership_id=result.membership_id,
+        )
+
+    @application.get(
+        "/v1/platform/tenants/pending",
+        response_model=list[PendingTenantResponse],
+    )
+    def pending_tenants(
+        user_id: UUID = Depends(selection_user),
+        db: Session = Depends(db_session),
+    ) -> list[PendingTenantResponse]:
+        from app.backend.services.tenant_lifecycle import require_platform_permission
+
+        try:
+            require_platform_permission(
+                db,
+                user_id=user_id,
+                permission_code="platform.tenants.approve",
+            )
+        except PlatformPermissionDenied:
+            raise HTTPException(status_code=403, detail="Platform permission required.") from None
+        return [
+            PendingTenantResponse(
+                tenant_id=item.tenant_id,
+                code=item.tenant_code,
+                name=item.tenant_name,
+                created_at=item.created_at,
+            )
+            for item in list_pending_tenants(db)
+        ]
+
+    @application.post("/v1/platform/tenants/{tenant_id}/approve", status_code=204)
+    def approve_tenant(
+        tenant_id: UUID,
+        payload: TenantApprovalRequest,
+        user_id: UUID = Depends(selection_user),
+        db: Session = Depends(db_session),
+    ) -> None:
+        try:
+            approve_tenant_registration(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                reason=payload.reason,
+            )
+        except PlatformPermissionDenied:
+            raise HTTPException(status_code=403, detail="Platform permission required.") from None
+        except TenantLifecycleError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
 
     @application.post("/v1/auth/login", response_model=GlobalLoginResponse)
     def global_login(

@@ -48,6 +48,13 @@ from app.backend.services.invitations import (
     list_invitations,
     revoke_invitation,
 )
+from app.backend.services.membership_admin import (
+    MembershipAdminError,
+    MembershipAdminPermissionDenied,
+    change_member_role,
+    list_tenant_members,
+    transition_member,
+)
 from app.backend.services.authentication import (
     authenticate_global_user,
     authorize_tenant_context,
@@ -118,6 +125,25 @@ class InvitationAcceptedResponse(BaseModel):
     status: str = "accepted"
     tenant_id: UUID
     membership_id: UUID
+
+
+class MemberRoleRequest(BaseModel):
+    role_code: str = Field(min_length=2, max_length=60)
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class MemberActionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class TenantMemberResponse(BaseModel):
+    membership_id: UUID
+    user_id: UUID
+    display_name: str | None
+    email: EmailStr | None
+    status: str
+    joined_at: Any | None
+    roles: list[str]
 
 
 class RegistrationAcceptedResponse(BaseModel):
@@ -627,5 +653,101 @@ def create_m9_app(
             tenant_name=principal.tenant_name,
             permissions=sorted(authorization.permissions),
         )
+
+    @application.get(
+        "/v1/tenants/{tenant_id}/members",
+        response_model=list[TenantMemberResponse],
+    )
+    def tenant_members(
+        tenant_id: UUID,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> list[TenantMemberResponse]:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.members.read" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant membership read permission required.")
+        try:
+            members = list_tenant_members(
+                db, actor_user_id=user_id, tenant_id=tenant_id
+            )
+        except MembershipAdminPermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant membership read permission required.") from None
+        return [
+            TenantMemberResponse(
+                membership_id=item.membership_id,
+                user_id=item.user_id,
+                display_name=item.display_name,
+                email=item.email,
+                status=item.status,
+                joined_at=item.joined_at,
+                roles=list(item.roles),
+            )
+            for item in members
+        ]
+
+    @application.patch(
+        "/v1/tenants/{tenant_id}/members/{membership_id}/role",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def update_tenant_member_role(
+        tenant_id: UUID,
+        membership_id: UUID,
+        payload: MemberRoleRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> None:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.members.manage" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant membership management permission required.")
+        try:
+            change_member_role(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                membership_id=membership_id,
+                role_code=payload.role_code,
+                reason=payload.reason,
+            )
+        except MembershipAdminPermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant membership management permission required.") from None
+        except MembershipAdminError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    @application.post(
+        "/v1/tenants/{tenant_id}/members/{membership_id}/{action}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def change_tenant_member_status(
+        tenant_id: UUID,
+        membership_id: UUID,
+        action: str,
+        payload: MemberActionRequest,
+        context: tuple[UUID, UUID, Any] = Depends(access_context),
+        db: Session = Depends(db_session),
+    ) -> None:
+        user_id, current_tenant_id, authorization = context
+        if tenant_id != current_tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant was not found.")
+        if "tenant.members.manage" not in authorization.permissions:
+            raise HTTPException(status_code=403, detail="Tenant membership management permission required.")
+        if action not in {"suspend", "reactivate", "remove"}:
+            raise HTTPException(status_code=404, detail="Membership action was not found.")
+        try:
+            transition_member(
+                db,
+                actor_user_id=user_id,
+                tenant_id=tenant_id,
+                membership_id=membership_id,
+                action=action,
+                reason=payload.reason,
+            )
+        except MembershipAdminPermissionDenied:
+            raise HTTPException(status_code=403, detail="Tenant membership management permission required.") from None
+        except MembershipAdminError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
 
     return application

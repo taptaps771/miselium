@@ -6,10 +6,11 @@ import "SettingsRegistry.js" as SettingsRegistry
 Item {
     id: page
 
-    property color panelColor: "#111c2f"
-    property color borderColor: "#26364d"
-    property color accentColor: "#7dd3fc"
-    property color mutedColor: "#9aabc2"
+    required property var themeController
+    property color panelColor: themeController.panel
+    property color borderColor: themeController.border
+    property color accentColor: themeController.accent
+    property color mutedColor: themeController.muted
 
     property string selectedModuleCode: ""
     property string selectedModuleTitle: ""
@@ -43,7 +44,7 @@ Item {
 
                 Label {
                     text: "Pengaturan Aplikasi"
-                    color: "#f8fafc"
+                    color: themeController.text
                     font.pixelSize: 26
                     font.bold: true
                 }
@@ -56,6 +57,52 @@ Item {
                 }
             }
 
+            Rectangle {
+                Layout.fillWidth: true
+                radius: themeController.cardRadius
+                color: themeController.panel
+                border.color: themeController.border
+                implicitHeight: appearanceControls.implicitHeight + 32
+                ColumnLayout {
+                    id: appearanceControls
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 10
+                    Label { text: "TAMPILAN & TEMA"; color: themeController.accent; font.bold: true; font.pixelSize: 11 }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: width >= 620 ? 2 : 1
+                        columnSpacing: 12
+                        rowSpacing: 8
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Label { text: "Visual style"; color: themeController.muted }
+                            ComboBox { Layout.fillWidth: true; model: ["Industrial Professional", "Glassmorphism", "Minimalist", "Industrial Dark"]; currentIndex: Math.max(0, model.indexOf(themeController.style)); onActivated: themeController.style = currentText }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Label { text: "Color palette"; color: themeController.muted }
+                            ComboBox { Layout.fillWidth: true; model: ["Office Blue", "Teal", "Violet", "Warm Earth", "Forest"]; currentIndex: Math.max(0, model.indexOf(themeController.palette)); onActivated: themeController.palette = currentText }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Label { text: "Appearance"; color: themeController.muted }
+                            ComboBox { Layout.fillWidth: true; model: ["System", "Light", "Dark"]; currentIndex: Math.max(0, model.indexOf(themeController.mode)); onActivated: themeController.mode = currentText }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Label { text: "Custom accent (#RRGGBB)"; color: themeController.muted }
+                            TextField { id: accentHexField; Layout.fillWidth: true; text: themeController.customAccent; placeholderText: "#245EA8"; onEditingFinished: themeController.setCustomAccent(themeController.customAccentEnabled, text) }
+                        }
+                    }
+                    CheckBox { text: "Gunakan warna aksen kustom"; checked: themeController.customAccentEnabled; onToggled: themeController.setCustomAccent(checked, accentHexField.text) }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { Layout.fillWidth: true; text: "Preview: " + themeController.style + " · " + themeController.palette; color: themeController.muted; wrapMode: Text.WordWrap }
+                        Button { text: "Reset"; onClicked: themeController.reset() }
+                    }
+                }
+            }
             Repeater {
                 model: page.settingsSections
 
@@ -109,7 +156,7 @@ Item {
                                     Label {
                                         Layout.fillWidth: true
                                         text: modelData.title
-                                        color: "#f8fafc"
+                                        color: themeController.text
                                         font.pixelSize: 15
                                         font.bold: true
                                         wrapMode: Text.WordWrap
@@ -141,7 +188,7 @@ Item {
                 Layout.fillWidth: true
                 visible: page.selectedModuleCode !== ""
                 radius: 16
-                color: "#0c1728"
+                color: themeController.panelInset
                 border.color: page.borderColor
                 implicitHeight: moduleDetail.implicitHeight + 36
 
@@ -160,7 +207,7 @@ Item {
                     }
                     Label {
                         text: page.selectedModuleTitle
-                        color: "#f8fafc"
+                        color: themeController.text
                         font.pixelSize: 18
                         font.bold: true
                     }
@@ -174,7 +221,7 @@ Item {
                     Label {
                         Layout.fillWidth: true
                         text: "Kerangka navigasi modul sudah tersedia. Form operasional dan integrasi backend modul ini dikerjakan sebagai implementasi terpisah."
-                        color: "#a7f3d0"
+                        color: themeController.success
                         wrapMode: Text.WordWrap
                         font.pixelSize: 11
                     }

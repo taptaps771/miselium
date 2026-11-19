@@ -72,6 +72,23 @@ BEGIN
     RAISE EXCEPTION 'role is unavailable for invitation' USING ERRCODE = '23503';
   END IF;
 
+  -- Re-check after acquiring role locks so a concurrent permission change
+  -- cannot revoke invite authority between the first check and this write.
+  IF NOT EXISTS (
+    SELECT 1
+      FROM tenant_memberships m
+      JOIN users u ON u.id = m.user_id AND u.status = 'active'
+      JOIN membership_role_assignments a
+        ON a.tenant_id = m.tenant_id AND a.membership_id = m.id
+      JOIN tenant_role_permissions rp
+        ON rp.tenant_id = a.tenant_id AND rp.role_id = a.role_id
+      JOIN tenant_permissions p ON p.id = rp.permission_id
+     WHERE m.tenant_id = p_tenant_id AND m.user_id = p_actor_user_id
+       AND m.status = 'active' AND p.code = 'tenant.members.invite'
+  ) THEN
+    RAISE EXCEPTION 'tenant invitation permission required' USING ERRCODE = '42501';
+  END IF;
+
   -- Invitation must not become a privilege-escalation path. The inviter must
   -- personally hold every permission carried by the role being assigned.
   IF EXISTS (

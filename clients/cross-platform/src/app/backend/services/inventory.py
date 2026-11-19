@@ -54,6 +54,24 @@ def _set_context(session: Session, actor_user_id: UUID, tenant_id: UUID) -> None
     )
 
 
+def _require_module_enabled(session: Session, tenant_id: UUID, module_code: str) -> None:
+    status = session.execute(
+        text(
+            """
+            SELECT tm.status
+              FROM tenant_modules AS tm
+              JOIN modules AS m ON m.id=tm.module_id
+             WHERE tm.tenant_id=:tenant_id AND m.code=:module_code
+            """
+        ),
+        {"tenant_id": str(tenant_id), "module_code": module_code},
+    ).scalar_one_or_none()
+    if status != "enabled":
+        raise InventoryPermissionDenied(
+            f"The {module_code} module is not enabled for this tenant."
+        )
+
+
 def _db_error(exc: DBAPIError) -> None:
     state = _sqlstate(exc)
     if state == "42501":
@@ -91,6 +109,7 @@ def post_inventory_document(
     balance, including when no ledger row exists yet.
     """
     _set_context(session, actor_user_id, tenant_id)
+    _require_module_enabled(session, tenant_id, "inventory")
     try:
         document = session.execute(
             text(
@@ -392,6 +411,7 @@ def reverse_inventory_document(
     if not reversal_document_no.strip() or len(reversal_document_no.strip()) > 60:
         raise InventoryServiceError("A valid reversal document number is required.")
     _set_context(session, actor_user_id, tenant_id)
+    _require_module_enabled(session, tenant_id, "inventory")
     try:
         original = session.execute(
             text(
@@ -667,6 +687,8 @@ def consume_production_materials(
 ) -> ProductionConsumptionResult:
     """Post a batch's issue document and freeze its actual material-cost links."""
     _set_context(session, actor_user_id, tenant_id)
+    _require_module_enabled(session, tenant_id, "inventory")
+    _require_module_enabled(session, tenant_id, "production")
     try:
         batch = session.execute(
             text(

@@ -206,27 +206,32 @@ Item {
                     clip: true
                     color: themeController.glassPreviewBackground
                     border.color: Qt.lighter(themeController.glassPreviewBackground, 1.25)
-                    Rectangle {
-                        width: 150; height: 150; radius: 75
-                        x: parent.width * 0.58; y: -35
-                        color: themeController.brand
-                        opacity: 0.7
-                    }
-                    Rectangle {
-                        width: 120; height: 120; radius: 60
-                        x: 20; y: 95
-                        color: themeController.accentAnchor
-                        opacity: 0.65
+                    Item {
+                        id: previewBackgroundLayer
+                        anchors.fill: parent
+                        Rectangle {
+                            width: 150; height: 150; radius: 75
+                            x: parent.width * 0.58; y: -35
+                            color: themeController.brand
+                            opacity: 0.7
+                        }
+                        Rectangle {
+                            width: 120; height: 120; radius: 60
+                            x: 20; y: 95
+                            color: themeController.accentAnchor
+                            opacity: 0.65
+                        }
                     }
                     ShaderEffectSource {
                         id: glassBackdropSource
-                        sourceItem: previewBackdrop
+                        sourceItem: previewBackgroundLayer
                         sourceRect: Qt.rect(glassPanel.x, glassPanel.y, glassPanel.width, glassPanel.height)
                         textureSize: Qt.size(Math.max(1, glassPanel.width * 1.5), Math.max(1, glassPanel.height * 1.5))
                         live: true
                         hideSource: false
                     }
                     MultiEffect {
+                        z: 1
                         anchors.fill: glassPanel
                         source: glassBackdropSource
                         blurEnabled: true

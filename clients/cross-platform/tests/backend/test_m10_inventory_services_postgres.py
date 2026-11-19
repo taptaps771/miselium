@@ -46,6 +46,16 @@ def test_m10_inventory_posting_transfer_reversal_and_production_consumption():
                 {"id": tenant_id, "code": f"m10-{tenant_id.hex[:16]}"},
             )
             connection.execute(
+                text(
+                    """
+                    INSERT INTO tenant_modules(tenant_id, module_id, status)
+                    SELECT :tenant_id, id, 'enabled' FROM modules
+                     WHERE code IN ('inventory','production')
+                    """
+                ),
+                {"tenant_id": tenant_id},
+            )
+            connection.execute(
                 text("INSERT INTO measurement_units(id, code, name, dimension) VALUES (:id, :code, 'Piece', 'count')"),
                 {"id": unit_id, "code": f"u-{unit_id.hex[:20]}"},
             )

@@ -127,7 +127,6 @@ def materialize_variety_segments(
                 SELECT id, output_quantity, output_unit_id
                   FROM production_lots
                  WHERE tenant_id=:tenant_id AND batch_id=:batch_id
-                 FOR UPDATE
                 """
             ),
             {"tenant_id": str(tenant_id), "batch_id": str(batch_id)},

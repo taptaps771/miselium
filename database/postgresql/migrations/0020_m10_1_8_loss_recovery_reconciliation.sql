@@ -298,34 +298,80 @@ CREATE OR REPLACE FUNCTION guard_production_recovery_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m1018$
 DECLARE
     v_loss_quantity numeric(24,8);
+    v_loss_unit uuid;
     v_loss_recoverable boolean;
     v_loss_disposition varchar(30);
+    v_source_item uuid;
+    v_recovered_item_type varchar(30);
+    v_recovered_item_active boolean;
+    v_recovered_lot_item uuid;
     v_document_type varchar(30);
     v_document_status varchar(20);
     v_line_document uuid;
     v_line_lot uuid;
     v_line_quantity numeric(24,8);
+    v_line_item uuid;
+    v_line_unit uuid;
+    v_line_base_quantity numeric(24,8);
+    v_line_currency char(3);
     v_ledger_quantity numeric(24,8);
     v_ledger_value numeric(24,8);
+    v_ledger_currency char(3);
 BEGIN
-    SELECT quantity,recoverable,disposition
-      INTO v_loss_quantity,v_loss_recoverable,v_loss_disposition
-      FROM production_losses
-     WHERE tenant_id=NEW.tenant_id AND id=NEW.loss_id
-     FOR UPDATE;
+    SELECT l.quantity,l.unit_id,l.recoverable,l.disposition,src_lot.item_id
+      INTO v_loss_quantity,v_loss_unit,v_loss_recoverable,v_loss_disposition,v_source_item
+      FROM production_losses l
+      LEFT JOIN production_lots pl
+        ON pl.tenant_id=l.tenant_id AND pl.id=l.production_lot_id
+      LEFT JOIN inventory_lots src_lot
+        ON src_lot.tenant_id=pl.tenant_id AND src_lot.id=pl.inventory_lot_id
+     WHERE l.tenant_id=NEW.tenant_id AND l.id=NEW.loss_id
+     FOR UPDATE OF l;
     IF v_loss_quantity IS NULL OR v_loss_recoverable IS DISTINCT FROM true
        OR v_loss_disposition <> 'pending'
-       OR NEW.recovered_quantity <> v_loss_quantity THEN
-        RAISE EXCEPTION 'Recovery requires one full, recoverable, pending loss'
+       OR NEW.loss_quantity_snapshot <> v_loss_quantity
+       OR NEW.loss_unit_id_snapshot <> v_loss_unit THEN
+        RAISE EXCEPTION 'Recovery requires a full, recoverable, pending source loss snapshot'
             USING ERRCODE='23514';
     END IF;
+    SELECT item_type,is_active INTO v_recovered_item_type,v_recovered_item_active
+      FROM inventory_items
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.recovered_item_id;
+    SELECT item_id INTO v_recovered_lot_item
+      FROM inventory_lots
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.recovered_inventory_lot_id;
+    IF v_recovered_item_active IS DISTINCT FROM true
+       OR v_recovered_lot_item IS DISTINCT FROM NEW.recovered_item_id THEN
+        RAISE EXCEPTION 'Recovery inventory lot must use the selected active tenant item'
+            USING ERRCODE='23514';
+    END IF;
+    IF NEW.recovery_mode='direct_resterilize' THEN
+        IF NEW.recovered_item_id IS DISTINCT FROM v_source_item
+           OR NEW.recovered_quantity <> v_loss_quantity
+           OR NEW.unit_id IS DISTINCT FROM v_loss_unit THEN
+            RAISE EXCEPTION 'Direct resterilization must preserve the source baglog item, quantity and unit'
+                USING ERRCODE='23514';
+        END IF;
+    ELSIF NEW.recovery_mode='recycle_to_mixing' THEN
+        IF v_recovered_item_type <> 'raw_material' THEN
+            RAISE EXCEPTION 'Recycling to mixing must create stock for a raw-material inventory item'
+                USING ERRCODE='23514';
+        END IF;
+    ELSE
+        RAISE EXCEPTION 'Unsupported production recovery mode'
+            USING ERRCODE='23514';
+    END IF;
+
     SELECT document_type,status INTO v_document_type,v_document_status
       FROM inventory_documents
      WHERE tenant_id=NEW.tenant_id AND id=NEW.inventory_document_id;
-    SELECT document_id,lot_id,quantity INTO v_line_document,v_line_lot,v_line_quantity
+    SELECT document_id,lot_id,quantity,item_id,unit_id,base_quantity,currency
+      INTO v_line_document,v_line_lot,v_line_quantity,v_line_item,v_line_unit,
+           v_line_base_quantity,v_line_currency
       FROM inventory_document_lines
      WHERE tenant_id=NEW.tenant_id AND id=NEW.inventory_document_line_id;
-    SELECT quantity_delta,value_delta INTO v_ledger_quantity,v_ledger_value
+    SELECT quantity_delta,value_delta,currency
+      INTO v_ledger_quantity,v_ledger_value,v_ledger_currency
       FROM inventory_ledger_entries
      WHERE tenant_id=NEW.tenant_id
        AND document_id=NEW.inventory_document_id
@@ -335,9 +381,13 @@ BEGIN
        OR v_line_document IS DISTINCT FROM NEW.inventory_document_id
        OR v_line_lot IS DISTINCT FROM NEW.recovered_inventory_lot_id
        OR v_line_quantity IS DISTINCT FROM NEW.recovered_quantity
-       OR v_ledger_quantity IS NULL OR v_ledger_quantity <= 0
+       OR v_line_item IS DISTINCT FROM NEW.recovered_item_id
+       OR v_line_unit IS DISTINCT FROM NEW.unit_id
+       OR v_ledger_quantity IS DISTINCT FROM v_line_base_quantity
+       OR v_ledger_currency IS DISTINCT FROM NEW.currency
+       OR v_line_currency IS DISTINCT FROM NEW.currency
        OR v_ledger_value IS DISTINCT FROM (NEW.original_cost_snapshot + NEW.recovery_cost_snapshot) THEN
-        RAISE EXCEPTION 'Recovery record requires its matching posted recovery document and stock ledger'
+        RAISE EXCEPTION 'Recovery record requires a matching posted recovery document and stock ledger'
             USING ERRCODE='23514';
     END IF;
     RETURN NEW;

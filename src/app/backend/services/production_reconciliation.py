@@ -51,6 +51,8 @@ class ProductionRecoveryResult:
     quantity: Decimal
     total_cost: Decimal
     currency: str
+    recovery_mode: str = "direct_resterilize"
+    disposition: str = "recovered"
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,17 +379,25 @@ def recover_production_loss(
     warehouse_id: UUID,
     material_value_snapshot: Decimal,
     recovery_cost_snapshot: Decimal,
+    recovery_mode: str = "direct_resterilize",
+    recovered_item_id: UUID | None = None,
+    recovered_quantity: Decimal | None = None,
+    recovered_unit_id: UUID | None = None,
     recovered_at: datetime | None = None,
     notes: str | None = None,
 ) -> ProductionRecoveryResult:
-    """Recover one full recoverable loss into a new inventory lot at historical cost.
+    """Recover one full loss into a new lot with immutable historical valuation.
 
-    material_value_snapshot is the salvageable historical material value;
-    recovery_cost_snapshot is the incremental recycle/rework cost. Their sum
-    becomes the recovered inventory value (e.g. 800 + 400 = 1,200).
+    direct_resterilize returns the same finished-baglog item and quantity.
+    recycle_to_mixing requires the measured raw-material item, quantity and
+    unit that actually resulted from recycling; no baglog-to-kilogram ratio is
+    inferred. Salvage value plus incremental recovery cost becomes new stock
+    value (for example 800 + 400 = 1,200).
     """
     if material_value_snapshot < 0 or recovery_cost_snapshot < 0:
         raise ProductionReconciliationError("Recovery cost snapshots cannot be negative.")
+    if recovery_mode not in {"direct_resterilize", "recycle_to_mixing"}:
+        raise ProductionReconciliationError("Unsupported production recovery mode.")
     timestamp = recovered_at or datetime.now(UTC)
     if timestamp.tzinfo is None:
         raise ProductionReconciliationError("Recovery timestamp must include a timezone.")
@@ -400,11 +410,11 @@ def recover_production_loss(
                 """
                 SELECT l.id,l.batch_id,l.production_lot_id,l.quantity,l.unit_id,
                        l.recoverable,l.disposition,pl.inventory_lot_id,pl.output_unit_id,
-                       b.location_id,il.item_id,ii.code AS item_code,ii.name AS item_name,
-                       ii.base_unit_id,base_unit.name AS base_unit_name,
-                       output_unit.name AS output_unit_name,t.default_currency,
+                       b.location_id,il.item_id,ii.code AS source_item_code,
+                       ii.name AS source_item_name,ii.base_unit_id,
+                       t.default_currency,
                        CASE WHEN ii.base_unit_id=pl.output_unit_id THEN 1
-                            ELSE iiu.conversion_to_base END AS conversion_to_base
+                            ELSE iiu.conversion_to_base END AS source_conversion_to_base
                   FROM production_losses l
                   JOIN production_batches b
                     ON b.tenant_id=l.tenant_id AND b.id=l.batch_id
@@ -414,8 +424,6 @@ def recover_production_loss(
                     ON il.tenant_id=pl.tenant_id AND il.id=pl.inventory_lot_id
                   JOIN inventory_items ii
                     ON ii.tenant_id=il.tenant_id AND ii.id=il.item_id
-                  JOIN measurement_units base_unit ON base_unit.id=ii.base_unit_id
-                  JOIN measurement_units output_unit ON output_unit.id=pl.output_unit_id
                   JOIN tenants t ON t.id=l.tenant_id
                   LEFT JOIN inventory_item_units iiu
                     ON iiu.tenant_id=ii.tenant_id AND iiu.item_id=ii.id
@@ -426,7 +434,9 @@ def recover_production_loss(
             {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
         ).mappings().one_or_none()
         if loss is None:
-            raise ProductionReconciliationError("The production loss was not found or has no source production lot.")
+            raise ProductionReconciliationError(
+                "The production loss was not found or has no traceable production lot."
+            )
         _lock_batch(session, tenant_id, UUID(str(loss["batch_id"])))
         locked_loss = session.execute(
             text(
@@ -445,7 +455,7 @@ def recover_production_loss(
             text(
                 """
                 SELECT id,recovered_inventory_lot_id,inventory_document_id,
-                       recovered_quantity,total_recovery_cost,currency
+                       recovered_quantity,total_recovery_cost,currency,recovery_mode
                   FROM production_recovery_lots
                  WHERE tenant_id=:tenant_id AND loss_id=:loss_id
                 """
@@ -459,15 +469,78 @@ def recover_production_loss(
                 UUID(str(replay["inventory_document_id"])),
                 Decimal(replay["recovered_quantity"]),
                 Decimal(replay["total_recovery_cost"]),str(replay["currency"]).strip(),
+                str(replay["recovery_mode"]),str(locked_loss["disposition"]),
             )
         if locked_loss["recoverable"] is not True or locked_loss["disposition"] != "pending":
             raise ProductionReconciliationError("Only a pending loss marked recoverable can be recovered.")
-        if loss["conversion_to_base"] is None:
+
+        loss_quantity = Decimal(loss["quantity"])
+        loss_unit_id = UUID(str(loss["unit_id"]))
+        if str(loss_unit_id) != str(loss["output_unit_id"]):
+            raise ProductionReconciliationError("Loss quantity unit must match its source production lot.")
+        if recovery_mode == "direct_resterilize":
+            if recovered_item_id not in (None, UUID(str(loss["item_id"]))) if "item_id" in loss else False:
+                raise ProductionReconciliationError("Direct resterilization must preserve the source inventory item.")
+            target_item_id = UUID(str(loss["item_id"]))
+            target_quantity = loss_quantity
+            target_unit_id = loss_unit_id
+            conversion = loss["source_conversion_to_base"]
+            target_item = session.execute(
+                text(
+                    """
+                    SELECT code,name,item_type,is_active
+                      FROM inventory_items
+                     WHERE tenant_id=:tenant_id AND id=:item_id
+                    """
+                ),
+                {"tenant_id": str(tenant_id), "item_id": str(target_item_id)},
+            ).mappings().one()
+        else:
+            if recovered_item_id is None or recovered_quantity is None or recovered_unit_id is None:
+                raise ProductionReconciliationError(
+                    "Recycling requires the measured raw-material item, recovered quantity and recovered unit."
+                )
+            if recovered_quantity <= 0:
+                raise ProductionReconciliationError("Recovered raw-material quantity must be positive.")
+            target_item_id = recovered_item_id
+            target_quantity = recovered_quantity
+            target_unit_id = recovered_unit_id
+            target_item = session.execute(
+                text(
+                    """
+                    SELECT i.code,i.name,i.item_type,i.is_active,i.base_unit_id,
+                           CASE WHEN i.base_unit_id=:unit_id THEN 1
+                                ELSE iu.conversion_to_base END AS conversion_to_base
+                      FROM inventory_items i
+                      LEFT JOIN inventory_item_units iu
+                        ON iu.tenant_id=i.tenant_id AND iu.item_id=i.id
+                       AND iu.unit_id=:unit_id
+                     WHERE i.tenant_id=:tenant_id AND i.id=:item_id
+                    """
+                ),
+                {
+                    "tenant_id": str(tenant_id), "item_id": str(target_item_id),
+                    "unit_id": str(target_unit_id),
+                },
+            ).mappings().one_or_none()
+            if target_item is None or target_item["item_type"] != "raw_material":
+                raise ProductionReconciliationError(
+                    "Recycle-to-mixing output must target an active raw-material inventory item."
+                )
+            conversion = target_item["conversion_to_base"]
+        if not target_item["is_active"]:
+            raise ProductionReconciliationError("Recovery target inventory item is inactive.")
+        if conversion is None:
             raise ProductionReconciliationError(
-                "The recovered output unit must be the item base unit or have an explicit item-unit conversion."
+                "The recovered inventory unit needs an explicit item-unit conversion to its base unit."
             )
-        if str(loss["unit_id"]) != str(loss["output_unit_id"]):
-            raise ProductionReconciliationError("Recovery quantity unit must match the source production lot unit.")
+        if recovery_mode == "direct_resterilize" and (
+            target_quantity != loss_quantity or target_unit_id != loss_unit_id
+        ):
+            raise ProductionReconciliationError(
+                "Direct resterilization must preserve source quantity and unit."
+            )
+
         warehouse_exists = session.execute(
             text(
                 """
@@ -488,13 +561,13 @@ def recover_production_loss(
                 "Recovery warehouse must be active and belong to the source batch location."
             )
 
-        quantity = Decimal(loss["quantity"])
-        conversion = Decimal(loss["conversion_to_base"])
-        base_quantity = (quantity * conversion).quantize(Decimal("0.00000001"))
+        conversion = Decimal(conversion)
+        base_quantity = (target_quantity * conversion).quantize(Decimal("0.00000001"))
         total_cost = (material_value_snapshot + recovery_cost_snapshot).quantize(
             Decimal("0.00000001")
         )
         currency = str(loss["default_currency"]).strip()
+        disposition = "recycled" if recovery_mode == "recycle_to_mixing" else "recovered"
         inventory_lot_id, document_id, line_id, recovery_id = (
             uuid4(), uuid4(), uuid4(), uuid4()
         )
@@ -510,14 +583,16 @@ def recover_production_loss(
                     :id,:tenant_id,:item_id,:lot_code,:received_at,'active',
                     jsonb_build_object('source','production_recovery',
                                        'loss_id',CAST(:loss_id AS uuid),
+                                       'recovery_mode',:recovery_mode,
                                        'source_inventory_lot_id',CAST(:source_lot AS uuid))
                 )
                 """
             ),
             {
                 "id": str(inventory_lot_id), "tenant_id": str(tenant_id),
-                "item_id": str(loss["item_id"]), "lot_code": lot_code,
+                "item_id": str(target_item_id), "lot_code": lot_code,
                 "received_at": timestamp, "loss_id": str(loss_id),
+                "recovery_mode": recovery_mode,
                 "source_lot": str(loss["inventory_lot_id"]),
             },
         )
@@ -562,15 +637,18 @@ def recover_production_loss(
             ),
             {
                 "id": str(line_id), "tenant_id": str(tenant_id),
-                "document_id": str(document_id), "item_id": str(loss["item_id"]),
-                "lot_id": str(inventory_lot_id), "item_code": loss["item_code"],
-                "item_name": loss["item_name"], "quantity": quantity,
-                "unit_id": str(loss["output_unit_id"]),
-                "unit_name": loss["output_unit_name"], "conversion": conversion,
-                "base_quantity": base_quantity,
-                "unit_cost": (total_cost / quantity).quantize(Decimal("0.00000001")),
+                "document_id": str(document_id), "item_id": str(target_item_id),
+                "lot_id": str(inventory_lot_id), "item_code": target_item["code"],
+                "item_name": target_item["name"], "quantity": target_quantity,
+                "unit_id": str(target_unit_id),
+                "unit_name": session.execute(
+                    text("SELECT name FROM measurement_units WHERE id=:unit_id"),
+                    {"unit_id": str(target_unit_id)},
+                ).scalar_one(),
+                "conversion": conversion, "base_quantity": base_quantity,
+                "unit_cost": (total_cost / target_quantity).quantize(Decimal("0.00000001")),
                 "currency": currency, "line_value": total_cost,
-                "notes": "Recovered quantity from production loss",
+                "notes": f"Recovery from production loss ({recovery_mode})",
             },
         )
         session.execute(
@@ -602,7 +680,7 @@ def recover_production_loss(
             {
                 "tenant_id": str(tenant_id), "document_id": str(document_id),
                 "line_id": str(line_id), "warehouse_id": str(warehouse_id),
-                "item_id": str(loss["item_id"]), "lot_id": str(inventory_lot_id),
+                "item_id": str(target_item_id), "lot_id": str(inventory_lot_id),
                 "quantity": base_quantity, "value": total_cost, "currency": currency,
                 "unit_cost": (total_cost / base_quantity).quantize(Decimal("0.00000001")),
                 "occurred_at": timestamp,
@@ -614,32 +692,39 @@ def recover_production_loss(
                 INSERT INTO production_recovery_lots(
                     id,tenant_id,loss_id,recovered_inventory_lot_id,recovered_quantity,
                     unit_id,original_cost_snapshot,recovery_cost_snapshot,currency,
-                    recovered_at,inventory_document_id,inventory_document_line_id,recovered_by
+                    recovered_at,inventory_document_id,inventory_document_line_id,recovered_by,
+                    loss_quantity_snapshot,loss_unit_id_snapshot,recovery_mode,recovered_item_id
                 ) VALUES (
                     :id,:tenant_id,:loss_id,:inventory_lot_id,:quantity,
                     :unit_id,:material_value,:recovery_cost,:currency,
-                    :recovered_at,:document_id,:line_id,:actor_user_id
+                    :recovered_at,:document_id,:line_id,:actor_user_id,
+                    :loss_quantity,:loss_unit_id,:recovery_mode,:recovered_item_id
                 )
                 """
             ),
             {
                 "id": str(recovery_id), "tenant_id": str(tenant_id),
                 "loss_id": str(loss_id), "inventory_lot_id": str(inventory_lot_id),
-                "quantity": quantity, "unit_id": str(loss["unit_id"]),
+                "quantity": target_quantity, "unit_id": str(target_unit_id),
                 "material_value": material_value_snapshot, "recovery_cost": recovery_cost_snapshot,
                 "currency": currency, "recovered_at": timestamp,
                 "document_id": str(document_id), "line_id": str(line_id),
-                "actor_user_id": str(actor_user_id),
+                "actor_user_id": str(actor_user_id), "loss_quantity": loss_quantity,
+                "loss_unit_id": str(loss_unit_id), "recovery_mode": recovery_mode,
+                "recovered_item_id": str(target_item_id),
             },
         )
         session.execute(
             text(
                 """
-                UPDATE production_losses SET disposition='recovered'
+                UPDATE production_losses SET disposition=:disposition
                  WHERE tenant_id=:tenant_id AND id=:loss_id
                 """
             ),
-            {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
+            {
+                "disposition": disposition, "tenant_id": str(tenant_id),
+                "loss_id": str(loss_id),
+            },
         )
         session.execute(
             text(
@@ -647,30 +732,36 @@ def recover_production_loss(
                 INSERT INTO tenant_audit_events(
                     tenant_id,actor_user_id,action,entity_type,entity_id,after_data,metadata
                 ) VALUES (
-                    :tenant_id,:actor_user_id,'production.loss.recovered',
+                    :tenant_id,:actor_user_id,:action,
                     'production_loss',:loss_id,
-                    jsonb_build_object('quantity',CAST(:quantity AS numeric),
+                    jsonb_build_object('recovered_quantity',CAST(:quantity AS numeric),
+                                       'loss_quantity',CAST(:loss_quantity AS numeric),
                                        'total_cost',CAST(:total_cost AS numeric),
                                        'currency',:currency),
                     jsonb_build_object('recovery_lot_id',CAST(:recovery_id AS uuid),
                                        'inventory_lot_id',CAST(:inventory_lot_id AS uuid),
-                                       'inventory_document_id',CAST(:document_id AS uuid))
+                                       'inventory_document_id',CAST(:document_id AS uuid),
+                                       'recovery_mode',:recovery_mode,
+                                       'recovered_item_id',CAST(:recovered_item_id AS uuid))
                 )
                 """
             ),
             {
                 "tenant_id": str(tenant_id), "actor_user_id": str(actor_user_id),
-                "loss_id": str(loss_id), "quantity": quantity, "total_cost": total_cost,
+                "action": "production.loss.recycled" if disposition == "recycled" else "production.loss.recovered",
+                "loss_id": str(loss_id), "quantity": target_quantity,
+                "loss_quantity": loss_quantity, "total_cost": total_cost,
                 "currency": currency, "recovery_id": str(recovery_id),
                 "inventory_lot_id": str(inventory_lot_id), "document_id": str(document_id),
+                "recovery_mode": recovery_mode, "recovered_item_id": str(target_item_id),
             },
         )
     except DBAPIError as exc:
         _translate_db_error(exc)
     return ProductionRecoveryResult(
-        loss_id,recovery_id,inventory_lot_id,document_id,quantity,total_cost,currency
+        loss_id,recovery_id,inventory_lot_id,document_id,target_quantity,total_cost,
+        currency,recovery_mode,disposition
     )
-
 
 def reconcile_and_close_batch(
     session: Session,

@@ -115,6 +115,7 @@ def _translate_db_error(exc: DBAPIError) -> None:
     if any(token in message for token in (
         "production loss", "loss", "recovery", "reconciliation", "inventory",
         "foreign key", "unique constraint", "check constraint", "duplicate key",
+        "cost snapshot", "salvage value", "historical posted production cost",
     )):
         raise ProductionReconciliationError(str(getattr(exc, "orig", exc))) from exc
     raise exc

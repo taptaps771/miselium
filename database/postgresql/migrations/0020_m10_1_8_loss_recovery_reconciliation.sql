@@ -291,7 +291,7 @@ BEGIN
        OR v_line_lot IS DISTINCT FROM NEW.recovered_inventory_lot_id
        OR v_line_quantity IS DISTINCT FROM NEW.recovered_quantity
        OR v_ledger_quantity IS NULL OR v_ledger_quantity <= 0
-       OR v_ledger_value IS DISTINCT FROM NEW.total_recovery_cost THEN
+       OR v_ledger_value IS DISTINCT FROM (NEW.original_cost_snapshot + NEW.recovery_cost_snapshot) THEN
         RAISE EXCEPTION 'Recovery record requires its matching posted recovery document and stock ledger'
             USING ERRCODE='23514';
     END IF;

@@ -254,8 +254,7 @@ BEGIN
       INTO v_run_total_allocated
       FROM sterilization_run_batches rb
      WHERE rb.tenant_id=NEW.tenant_id
-       AND rb.sterilization_run_id=NEW.sterilization_run_id
-       AND (TG_OP='INSERT' OR rb.batch_id<>OLD.batch_id);
+       AND rb.sterilization_run_id=NEW.sterilization_run_id;
     v_run_total_allocated := v_run_total_allocated + NEW.capacity_quantity_snapshot;
     IF v_run_total_allocated > v_machine_capacity*v_machine_factor THEN
         RAISE EXCEPTION 'Sterilizer run allocation exceeds the machine capacity'
@@ -276,9 +275,7 @@ BEGIN
         ON sr.tenant_id=rb.tenant_id AND sr.id=rb.sterilization_run_id
      WHERE rb.tenant_id=NEW.tenant_id
        AND sr.cycle_id=(SELECT cycle_id FROM sterilization_runs
-                         WHERE tenant_id=NEW.tenant_id AND id=NEW.sterilization_run_id)
-       AND (TG_OP='INSERT' OR (rb.sterilization_run_id,rb.batch_id) <>
-           (OLD.sterilization_run_id,OLD.batch_id));
+                         WHERE tenant_id=NEW.tenant_id AND id=NEW.sterilization_run_id);
     v_cycle_total_allocated := v_cycle_total_allocated + NEW.capacity_quantity_snapshot;
     IF v_cycle_total_allocated > v_cycle_total_capacity THEN
         RAISE EXCEPTION 'Combined sterilization cycle allocation exceeds participating machine capacity'
@@ -288,9 +285,7 @@ BEGIN
     SELECT COALESCE(sum(allocated_quantity),0)
       INTO v_batch_total_allocated
       FROM sterilization_run_batches
-     WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id
-       AND (TG_OP='INSERT' OR (sterilization_run_id,batch_id) <>
-           (OLD.sterilization_run_id,OLD.batch_id));
+     WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id;
     v_batch_total_allocated := v_batch_total_allocated + NEW.allocated_quantity;
     IF v_batch_total_allocated > v_batch_output THEN
         RAISE EXCEPTION 'Sterilization allocation exceeds the batch good output'
@@ -301,7 +296,7 @@ END;
 $m1015$;
 
 CREATE TRIGGER sterilization_run_batch_capacity_guard
-    BEFORE INSERT OR UPDATE ON sterilization_run_batches
+    BEFORE INSERT ON sterilization_run_batches
     FOR EACH ROW EXECUTE FUNCTION guard_sterilization_run_batch_capacity();
 
 CREATE OR REPLACE FUNCTION guard_sterilization_run_schedule_overlap()

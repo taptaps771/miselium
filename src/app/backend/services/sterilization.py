@@ -177,6 +177,11 @@ def schedule_sterilization_cycle(
     machine_ids = [entry.sterilizer_id for entry in sterilizers]
     if len(machine_ids) != len(set(machine_ids)):
         raise SterilizationError("A sterilizer can only appear once in a cycle.")
+    if any(
+        len({allocation.batch_id for allocation in entry.allocations}) != len(entry.allocations)
+        for entry in sterilizers
+    ):
+        raise SterilizationError("A batch can only be listed once per sterilizer run.")
     if any(not entry.allocations for entry in sterilizers):
         raise SterilizationError("Every participating sterilizer needs at least one batch allocation.")
 
@@ -325,7 +330,7 @@ def schedule_sterilization_cycle(
             run_ids.append(run_id)
             cycle_minutes = int(machine["cycle_minutes"])
             planned_end_at = planned_start_at + timedelta(minutes=cycle_minutes)
-            run_code = f"{cycle_code.strip()}-{str(entry.sterilizer_id).replace('-', '')[:10]}"
+            run_code = f"SR-{cycle_id.hex}-{entry.sterilizer_id.hex}"
             overlap = session.execute(
                 text(
                     """

@@ -457,9 +457,9 @@ def transition_production_batch(
                 ) VALUES (
                     :tenant_id, :actor_user_id, 'production.batch.transition',
                     'production_batch', :batch_id,
-                    jsonb_build_object('status', :from_status),
-                    jsonb_build_object('status', :to_status, 'event_id', CAST(:event_id AS uuid)),
-                    jsonb_build_object('command', :command, 'idempotency_key', :idempotency_key)
+                    jsonb_build_object('status', CAST(:from_status AS text)),
+                    jsonb_build_object('status', CAST(:to_status AS text), 'event_id', CAST(:event_id AS uuid)),
+                    jsonb_build_object('command', CAST(:command AS text), 'idempotency_key', CAST(:idempotency_key AS text))
                 )
                 """
             ),

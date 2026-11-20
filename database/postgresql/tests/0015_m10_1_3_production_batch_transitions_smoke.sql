@@ -36,7 +36,8 @@ BEGIN
       FROM pg_trigger
      WHERE tgrelid='production_batch_events'::regclass
        AND tgname='production_batch_events_immutable';
-    IF v_definition NOT ILIKE '%UPDATE OR DELETE%' THEN
+    IF position('UPDATE' IN v_definition) = 0
+       OR position('DELETE' IN v_definition) = 0 THEN
         RAISE EXCEPTION 'Production batch event trigger must reject updates and deletes';
     END IF;
 

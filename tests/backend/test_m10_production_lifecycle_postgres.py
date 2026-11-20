@@ -232,6 +232,10 @@ def test_production_batch_transition_idempotency_hold_resume_and_guards():
             assert resumed.to_status == "mixing"
             session.commit()
 
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(tenant_id)},
+            )
             status_value = session.execute(
                 text("SELECT status FROM production_batches WHERE tenant_id=:tenant_id AND id=:batch_id"),
                 {"tenant_id": str(tenant_id), "batch_id": str(batch_id)},

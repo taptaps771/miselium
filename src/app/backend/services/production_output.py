@@ -238,19 +238,17 @@ def post_production_output(
         base_unit_cost = (material_cost / base_quantity).quantize(Decimal("0.00000001"))
         display_unit_cost = (material_cost / output_quantity).quantize(Decimal("0.00000001"))
 
-        # Match the advisory-lock key used by generic inventory posting so
-        # inbound production output serializes with concurrent stock issues.
+        inventory_lot_id = uuid4()
+        production_lot_id = uuid4()
+        # Use the same balance lock key as generic inventory posting so this
+        # inbound movement serializes with concurrent stock issues.
         stock_lock_key = (
-            f"{tenant_id}:{warehouse_id}:{batch['output_item_id']}:"
-            f"{'PRD-' + batch_id.hex}"
+            f"{tenant_id}:{warehouse_id}:{batch['output_item_id']}:{inventory_lot_id}"
         )
         session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
             {"lock_key": stock_lock_key},
         )
-
-        inventory_lot_id = uuid4()
-        production_lot_id = uuid4()
         document_id = uuid4()
         line_id = uuid4()
         posting_id = uuid4()

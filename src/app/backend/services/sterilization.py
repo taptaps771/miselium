@@ -338,9 +338,14 @@ def schedule_sterilization_cycle(
                     SELECT EXISTS (
                         SELECT 1 FROM sterilization_runs
                          WHERE tenant_id=:tenant_id AND sterilizer_id=:machine_id
-                           AND status IN ('planned','running')
-                           AND planned_start_at < :planned_end
-                           AND :planned_start < planned_end_at
+                           AND (
+                               status='running'
+                               OR (
+                                   status='planned'
+                                   AND planned_start_at < :planned_end
+                                   AND :planned_start < planned_end_at
+                               )
+                           )
                     )
                     """
                 ),
@@ -441,7 +446,8 @@ def start_sterilization_run(
             text(
                 """
                 SELECT sr.id, sr.cycle_id, sr.sterilizer_id, sr.status,
-                       sr.planned_start_at, sc.status AS cycle_status
+                       sr.planned_start_at, sr.planned_end_at,
+                       sc.status AS cycle_status
                   FROM sterilization_runs sr
                   JOIN sterilization_cycles sc
                     ON sc.tenant_id=sr.tenant_id AND sc.id=sr.cycle_id
@@ -457,7 +463,8 @@ def start_sterilization_run(
             text(
                 """
                 SELECT sr.id, sr.cycle_id, sr.sterilizer_id, sr.status,
-                       sr.planned_start_at, sc.status AS cycle_status
+                       sr.planned_start_at, sr.planned_end_at,
+                       sc.status AS cycle_status
                   FROM sterilization_runs sr
                   JOIN sterilization_cycles sc
                     ON sc.tenant_id=sr.tenant_id AND sc.id=sr.cycle_id
@@ -468,8 +475,11 @@ def start_sterilization_run(
         ).mappings().one()
         if run["status"] != "planned" or run["cycle_status"] not in {"planned", "running"}:
             raise SterilizationError("Only a planned run in an active cycle can be started.")
-        if run["planned_start_at"] > datetime.now(timezone.utc):
+        now = datetime.now(timezone.utc)
+        if run["planned_start_at"] > now:
             raise SterilizationError("A scheduled run cannot start before its planned start time.")
+        if run["planned_end_at"] <= now:
+            raise SterilizationError("The scheduled machine slot has expired; create a new cycle time.")
         session.execute(
             text(
                 """

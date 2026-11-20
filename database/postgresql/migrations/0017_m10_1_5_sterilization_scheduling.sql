@@ -99,7 +99,8 @@ DECLARE
     v_machine_cycle_minutes integer;
     v_machine_cooling_minutes integer;
     v_machine_active boolean;
-    v_cycle_unit uuid;
+    v_cycle_production_unit uuid;
+    v_cycle_capacity_unit uuid;
     v_cycle_unit_dimension varchar(20);
     v_machine_unit_dimension varchar(20);
     v_expected_factor numeric(24,12);
@@ -111,12 +112,12 @@ BEGIN
       FROM sterilizers
      WHERE tenant_id=NEW.tenant_id AND id=NEW.sterilizer_id;
     SELECT production_unit_id, capacity_unit_id
-      INTO v_cycle_unit, v_cycle_unit
+      INTO v_cycle_production_unit, v_cycle_capacity_unit
       FROM sterilization_cycles
      WHERE tenant_id=NEW.tenant_id AND id=NEW.cycle_id;
 
-    IF NEW.cycle_id IS NULL OR v_machine_unit IS NULL OR v_cycle_unit IS NULL
-       OR v_machine_unit <> v_cycle_unit THEN
+    IF NEW.cycle_id IS NULL OR v_machine_unit IS NULL OR v_cycle_production_unit IS NULL
+       OR v_machine_unit <> v_cycle_production_unit OR v_cycle_capacity_unit IS NULL THEN
         RAISE EXCEPTION 'Sterilization run and cycle must belong to the same production unit'
             USING ERRCODE='23514';
     END IF;
@@ -139,22 +140,19 @@ BEGIN
     END IF;
 
     SELECT dimension INTO v_cycle_unit_dimension FROM measurement_units
-     WHERE id=(SELECT capacity_unit_id FROM sterilization_cycles
-                WHERE tenant_id=NEW.tenant_id AND id=NEW.cycle_id);
+     WHERE id=v_cycle_capacity_unit;
     SELECT dimension INTO v_machine_unit_dimension FROM measurement_units
      WHERE id=v_machine_capacity_unit;
     IF v_cycle_unit_dimension IS NULL OR v_cycle_unit_dimension <> v_machine_unit_dimension THEN
         RAISE EXCEPTION 'Sterilizer capacity and cycle capacity units must share a dimension'
             USING ERRCODE='23514';
     END IF;
-    IF v_machine_capacity_unit = (SELECT capacity_unit_id FROM sterilization_cycles
-                                   WHERE tenant_id=NEW.tenant_id AND id=NEW.cycle_id) THEN
+    IF v_machine_capacity_unit = v_cycle_capacity_unit THEN
         v_expected_factor := 1;
     ELSE
         SELECT factor INTO v_expected_factor FROM measurement_unit_conversions
          WHERE from_unit_id=v_machine_capacity_unit
-           AND to_unit_id=(SELECT capacity_unit_id FROM sterilization_cycles
-                            WHERE tenant_id=NEW.tenant_id AND id=NEW.cycle_id);
+           AND to_unit_id=v_cycle_capacity_unit;
     END IF;
     IF v_expected_factor IS NULL
        OR NEW.capacity_to_cycle_unit_snapshot <> v_expected_factor THEN
@@ -186,6 +184,14 @@ DECLARE
     v_run_total_allocated numeric(24,8);
     v_batch_total_allocated numeric(24,8);
 BEGIN
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(
+            NEW.tenant_id::text || ':sterilization-cycle:' ||
+            (SELECT cycle_id::text FROM sterilization_runs
+              WHERE tenant_id=NEW.tenant_id AND id=NEW.sterilization_run_id),
+            0
+        )
+    );
     SELECT actual_output_quantity, output_unit_id
       INTO v_batch_output, v_batch_unit
       FROM production_batches
@@ -286,6 +292,9 @@ CREATE TRIGGER sterilization_run_batch_capacity_guard
 CREATE OR REPLACE FUNCTION guard_sterilization_run_schedule_overlap()
 RETURNS trigger LANGUAGE plpgsql AS $m1015$
 BEGIN
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.tenant_id::text || ':sterilizer:' || NEW.sterilizer_id::text, 0)
+    );
     IF EXISTS (
         SELECT 1 FROM sterilization_runs other
          WHERE other.tenant_id=NEW.tenant_id

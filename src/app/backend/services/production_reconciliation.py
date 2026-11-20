@@ -332,7 +332,6 @@ def recover_production_loss(
                     ON iiu.tenant_id=ii.tenant_id AND iiu.item_id=ii.id
                    AND iiu.unit_id=pl.output_unit_id
                  WHERE l.tenant_id=:tenant_id AND l.id=:loss_id
-                 FOR UPDATE OF l
                 """
             ),
             {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
@@ -340,7 +339,39 @@ def recover_production_loss(
         if loss is None:
             raise ProductionReconciliationError("The production loss was not found or has no source production lot.")
         _lock_batch(session, tenant_id, UUID(str(loss["batch_id"])))
-        if loss["recoverable"] is not True or loss["disposition"] != "pending":
+        locked_loss = session.execute(
+            text(
+                """
+                SELECT recoverable,disposition
+                  FROM production_losses
+                 WHERE tenant_id=:tenant_id AND id=:loss_id
+                 FOR UPDATE
+                """
+            ),
+            {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
+        ).mappings().one_or_none()
+        if locked_loss is None:
+            raise ProductionReconciliationError("The production loss no longer exists.")
+        replay = session.execute(
+            text(
+                """
+                SELECT id,recovered_inventory_lot_id,inventory_document_id,
+                       recovered_quantity,total_recovery_cost,currency
+                  FROM production_recovery_lots
+                 WHERE tenant_id=:tenant_id AND loss_id=:loss_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
+        ).mappings().one_or_none()
+        if replay is not None and locked_loss["disposition"] in {"recovered","recycled"}:
+            return ProductionRecoveryResult(
+                loss_id,UUID(str(replay["id"])),
+                UUID(str(replay["recovered_inventory_lot_id"])),
+                UUID(str(replay["inventory_document_id"])),
+                Decimal(replay["recovered_quantity"]),
+                Decimal(replay["total_recovery_cost"]),str(replay["currency"]).strip(),
+            )
+        if locked_loss["recoverable"] is not True or locked_loss["disposition"] != "pending":
             raise ProductionReconciliationError("Only a pending loss marked recoverable can be recovered.")
         if loss["conversion_to_base"] is None:
             raise ProductionReconciliationError(

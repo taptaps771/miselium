@@ -421,6 +421,26 @@ def create_incubation_record(
                 "notes": notes.strip() if notes and notes.strip() else None,
             },
         )
+        session.execute(
+            text(
+                """
+                INSERT INTO incubation_record_events(
+                    tenant_id, incubation_record_id, event_type, occurred_at,
+                    actor_user_id, metadata
+                ) VALUES (
+                    :tenant_id, :record_id, 'incubation_started', :occurred_at,
+                    :actor_user_id,
+                    jsonb_build_object('target_days', :target_days,
+                                       'expected_move_at', CAST(:expected_move_at AS timestamptz))
+                )
+                """
+            ),
+            {
+                "tenant_id": str(tenant_id), "record_id": str(record_id),
+                "occurred_at": start, "actor_user_id": str(actor_user_id),
+                "target_days": target_days, "expected_move_at": expected,
+            },
+        )
     except DBAPIError as exc:
         _translate_db_error(exc)
     return IncubationRecordResult(record_id, batch_id, start, expected, target_days)

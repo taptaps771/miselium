@@ -432,9 +432,6 @@ GRANT SELECT ON production_machine_cost_allocations,production_lot_segments,
 GRANT INSERT ON inventory_lots,inventory_documents,inventory_document_lines,
     inventory_ledger_entries,tenant_audit_events TO miselium_app;
 
-COMMIT;
-
-
 -- Keep placement capacity and available-segment checks consistent with loss records.
 CREATE OR REPLACE FUNCTION guard_kumbung_placement_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m1017$
@@ -587,3 +584,5 @@ BEGIN
     RETURN NEW;
 END;
 $m1017$;
+
+COMMIT;

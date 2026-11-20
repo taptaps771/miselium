@@ -163,18 +163,23 @@ DECLARE
     v_segment_unit uuid;
     v_kumbung_location uuid;
     v_batch_location uuid;
+    v_batch_status varchar(30);
     v_occupancy numeric(24,8);
 BEGIN
     PERFORM pg_advisory_xact_lock(
         hashtextextended(NEW.tenant_id::text || ':production-batch:' || NEW.batch_id::text,0)
     );
-    SELECT planned_output_quantity,location_id,output_unit_id
-      INTO v_batch_output,v_batch_location,v_batch_output_unit
+    SELECT planned_output_quantity,location_id,output_unit_id,status
+      INTO v_batch_output,v_batch_location,v_batch_output_unit,v_batch_status
       FROM production_batches
      WHERE tenant_id=NEW.tenant_id AND id=NEW.batch_id;
     IF v_batch_output IS NULL THEN
         RAISE EXCEPTION 'Loss requires a tenant-owned production batch'
             USING ERRCODE='23503';
+    END IF;
+    IF v_batch_status='closed' THEN
+        RAISE EXCEPTION 'A closed production batch cannot accept new loss records'
+            USING ERRCODE='55000';
     END IF;
 
     IF NEW.stage='press_baglog' THEN

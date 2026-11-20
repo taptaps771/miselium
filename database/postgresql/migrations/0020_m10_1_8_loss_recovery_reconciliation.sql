@@ -97,6 +97,7 @@ DECLARE
     v_press_rejects numeric(24,8);
     v_press_lot_batch uuid;
     v_segment_batch uuid;
+    v_lock_batch uuid;
     v_segment_lot uuid;
     v_segment_unit uuid;
     v_kumbung_location uuid;
@@ -147,6 +148,12 @@ BEGIN
                 USING ERRCODE='23514';
         END IF;
     ELSIF NEW.stage='kumbung' THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(NEW.tenant_id::text || ':kumbung:' || NEW.source_kumbung_id::text,0)
+        );
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(NEW.tenant_id::text || ':lot-segment:' || NEW.production_lot_segment_id::text,0)
+        );
         SELECT s.batch_id,s.production_lot_id,s.unit_id,b.location_id
           INTO v_segment_batch,v_segment_lot,v_segment_unit,v_batch_location
           FROM production_lot_segments s
@@ -349,6 +356,9 @@ DECLARE
     v_snapshot_output numeric(24,8);
     v_snapshot_currency char(3);
 BEGIN
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.tenant_id::text || ':production-batch:' || NEW.batch_id::text,0)
+    );
     SELECT status INTO v_status
       FROM production_batches
      WHERE tenant_id=NEW.tenant_id AND id=NEW.batch_id
@@ -524,6 +534,16 @@ BEGIN
         RAISE EXCEPTION 'New kumbung placements must reference a variety-specific production lot segment'
             USING ERRCODE='23514';
     END IF;
+    SELECT batch_id INTO v_lock_batch
+      FROM production_lot_segments
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_segment_id;
+    IF v_lock_batch IS NULL THEN
+        RAISE EXCEPTION 'The requested variety lot segment was not found'
+            USING ERRCODE='23503';
+    END IF;
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.tenant_id::text || ':production-batch:' || v_lock_batch::text,0)
+    );
     PERFORM pg_advisory_xact_lock(
         hashtextextended(NEW.tenant_id::text || ':kumbung:' || NEW.kumbung_id::text,0)
     );

@@ -36,7 +36,7 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
     machine_a, machine_b = uuid4(), uuid4()
     admin_engine = create_engine(admin_url)
     runtime_engine = create_engine(runtime_url)
-    planned_start = datetime.now(timezone.utc) - timedelta(minutes=2)
+    planned_start = datetime.now(timezone.utc) - timedelta(minutes=1)
 
     try:
         with admin_engine.begin() as connection:
@@ -160,7 +160,7 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
                             capacity, capacity_unit_id, cycle_minutes, cooling_minutes, is_active
                         ) VALUES (
                             :id, :tenant_id, :production_unit_id, :code, :name,
-                            500, :unit_id, 1, 0, true
+                            500, :unit_id, 60, 0, true
                         )
                         """
                     ),

@@ -12,6 +12,7 @@ from app.backend.services.production_reconciliation import (
     ProductionReconciliationError,
     record_production_loss,
     recover_production_loss,
+    reconcile_and_close_batch,
     set_production_loss_disposition,
 )
 
@@ -30,6 +31,7 @@ def test_production_loss_idempotency_and_immutable_event_history():
     location_id, production_unit_id, unit_id = uuid4(), uuid4(), uuid4()
     item_id, recipe_id, recipe_version_id, batch_id = (uuid4() for _ in range(4))
     inventory_lot_id, production_lot_id, warehouse_id = uuid4(), uuid4(), uuid4()
+    consumption_document_id, consumption_line_id = uuid4(), uuid4()
     admin_engine = create_engine(admin_url)
     runtime_engine = create_engine(runtime_url)
 
@@ -166,6 +168,80 @@ def test_production_loss_idempotency_and_immutable_event_history():
             connection.execute(
                 text(
                     """
+                    INSERT INTO inventory_documents(
+                        id,tenant_id,document_no,document_type,status,source_warehouse_id,
+                        occurred_at,posted_at,posted_by,source_reference_type,
+                        source_reference_id,notes,created_by
+                    ) VALUES (
+                        :id,:tenant_id,:document_no,'production_consumption','posted',:warehouse_id,
+                        now(),now(),:actor_id,'production_batch',:batch_id,'M10 cost fixture',:actor_id
+                    )
+                    """
+                ),
+                {
+                    "id": consumption_document_id, "tenant_id": tenant_id,
+                    "document_no": f"LOSS-CONS-{tenant_id.hex[:8]}",
+                    "warehouse_id": warehouse_id, "actor_id": actor_id, "batch_id": batch_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO inventory_document_lines(
+                        id,tenant_id,document_id,line_no,item_id,lot_id,
+                        item_code_snapshot,item_name_snapshot,quantity,unit_id,
+                        unit_name_snapshot,conversion_to_base_snapshot,base_quantity,
+                        unit_cost_snapshot,currency,line_value_snapshot
+                    ) VALUES (
+                        :id,:tenant_id,:document_id,1,:item_id,:lot_id,
+                        :item_code,'Loss fixture item',1,:unit_id,'Baglog',1,1,8,'IDR',8
+                    )
+                    """
+                ),
+                {
+                    "id": consumption_line_id, "tenant_id": tenant_id,
+                    "document_id": consumption_document_id, "item_id": item_id,
+                    "lot_id": inventory_lot_id, "item_code": f"LOSS-ITEM-{tenant_id.hex[:8]}",
+                    "unit_id": unit_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO inventory_ledger_entries(
+                        tenant_id,document_id,document_line_id,warehouse_id,item_id,lot_id,
+                        quantity_delta,value_delta,currency,unit_cost_snapshot,occurred_at
+                    ) VALUES (
+                        :tenant_id,:document_id,:line_id,:warehouse_id,:item_id,:lot_id,
+                        -1,-8,'IDR',8,now()
+                    )
+                    """
+                ),
+                {
+                    "tenant_id": tenant_id, "document_id": consumption_document_id,
+                    "line_id": consumption_line_id, "warehouse_id": warehouse_id,
+                    "item_id": item_id, "lot_id": inventory_lot_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO production_batch_consumptions(
+                        tenant_id,batch_id,inventory_document_line_id,item_id,
+                        consumed_base_quantity,material_cost_snapshot,currency,consumed_at
+                    ) VALUES (
+                        :tenant_id,:batch_id,:line_id,:item_id,1,8,'IDR',now()
+                    )
+                    """
+                ),
+                {
+                    "tenant_id": tenant_id, "batch_id": batch_id,
+                    "line_id": consumption_line_id, "item_id": item_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """
                     INSERT INTO production_lots(
                         id,tenant_id,batch_id,inventory_lot_id,variety_id,
                         output_quantity,output_unit_id,produced_at
@@ -284,6 +360,45 @@ def test_production_loss_idempotency_and_immutable_event_history():
             assert Decimal(recovery_ledger["quantity_delta"]) == Decimal("5")
             assert Decimal(recovery_ledger["value_delta"]) == Decimal("12")
             assert recovery_ledger["disposition"] == "recovered"
+
+            terminal_loss = record_production_loss(
+                session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,
+                stage="inoculation", idempotency_key=f"inoculation-loss-{batch_id.hex}",
+                reason_code="contamination", quantity=Decimal("95"), unit_id=unit_id,
+                disposition="permanent_loss", production_lot_id=production_lot_id,
+                notes="Remaining output permanently lost during inoculation",
+            )
+            assert terminal_loss.disposition == "permanent_loss"
+            session.commit()
+            with admin_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE production_batches SET status='ready',actual_output_quantity=100 "
+                        "WHERE tenant_id=:tenant_id AND id=:batch_id"
+                    ),
+                    {"tenant_id": tenant_id, "batch_id": batch_id},
+                )
+
+            finalized = reconcile_and_close_batch(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                batch_id=batch_id, idempotency_key=f"close-{batch_id.hex}",
+                notes="All baglog output placed or explicitly lost/recovered",
+            )
+            assert finalized.output_quantity == Decimal("100")
+            assert finalized.placed_quantity == Decimal("0")
+            assert finalized.loss_quantity == Decimal("100")
+            assert finalized.total_cost == Decimal("8")
+            assert finalized.transition.to_status == "closed"
+            session.commit()
+
+            replayed_finalization = reconcile_and_close_batch(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                batch_id=batch_id, idempotency_key=f"close-{batch_id.hex}",
+                notes="All baglog output placed or explicitly lost/recovered",
+            )
+            assert replayed_finalization.reconciliation_id == finalized.reconciliation_id
+            assert replayed_finalization.transition.was_replayed is True
+            session.commit()
     finally:
         runtime_engine.dispose()
         admin_engine.dispose()

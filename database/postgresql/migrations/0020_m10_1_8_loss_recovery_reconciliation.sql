@@ -265,6 +265,13 @@ BEGIN
                 USING ERRCODE='23514';
         END IF;
     ELSIF NEW.stage IN ('sterilization','cooling','inoculation','incubation','other') THEN
+        IF NEW.production_lot_segment_id IS NULL AND EXISTS (
+            SELECT 1 FROM production_lot_segments
+             WHERE tenant_id=NEW.tenant_id AND production_lot_id=NEW.production_lot_id
+        ) THEN
+            RAISE EXCEPTION 'Downstream loss must identify a variety segment once the lot has been segmented'
+                USING ERRCODE='23514';
+        END IF;
         SELECT batch_id,output_quantity,output_unit_id
           INTO v_lot_batch,v_lot_quantity,v_lot_unit
           FROM production_lots
@@ -311,6 +318,36 @@ $m1018$;
 CREATE TRIGGER production_loss_insert_guard
     BEFORE INSERT ON production_losses
     FOR EACH ROW EXECUTE FUNCTION guard_production_loss_insert();
+
+CREATE OR REPLACE FUNCTION guard_production_lot_segment_loss_capacity()
+RETURNS trigger LANGUAGE plpgsql AS $m1018$
+DECLARE
+    v_lot_quantity numeric(24,8);
+    v_segmented_quantity numeric(24,8);
+    v_unsegmented_loss numeric(24,8);
+BEGIN
+    SELECT output_quantity INTO v_lot_quantity
+      FROM production_lots
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_id;
+    SELECT COALESCE(sum(quantity),0) INTO v_segmented_quantity
+      FROM production_lot_segments
+     WHERE tenant_id=NEW.tenant_id AND production_lot_id=NEW.production_lot_id;
+    SELECT COALESCE(sum(quantity),0) INTO v_unsegmented_loss
+      FROM production_losses
+     WHERE tenant_id=NEW.tenant_id AND production_lot_id=NEW.production_lot_id
+       AND production_lot_segment_id IS NULL
+       AND stage NOT IN ('mixing','press_baglog');
+    IF v_lot_quantity IS NULL
+       OR v_segmented_quantity + v_unsegmented_loss + NEW.quantity > v_lot_quantity THEN
+        RAISE EXCEPTION 'Variety allocations cannot consume output already lost before variety segmentation'
+            USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END;
+$m1018$;
+CREATE TRIGGER production_lot_segment_loss_capacity_guard
+    BEFORE INSERT ON production_lot_segments
+    FOR EACH ROW EXECUTE FUNCTION guard_production_lot_segment_loss_capacity();
 
 CREATE OR REPLACE FUNCTION guard_production_loss_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $m1018$

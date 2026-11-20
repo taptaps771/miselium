@@ -279,6 +279,91 @@ def record_production_loss(
         _translate_db_error(exc)
     return ProductionLossResult(loss_id, batch_id, stage, quantity, unit_id, disposition)
 
+
+def set_production_loss_disposition(
+    session: Session,
+    *,
+    actor_user_id: UUID,
+    tenant_id: UUID,
+    loss_id: UUID,
+    disposition: str,
+) -> ProductionLossResult:
+    """Resolve a pending loss as permanent or discarded exactly once."""
+    if disposition not in {"permanent_loss", "discarded"}:
+        raise ProductionReconciliationError(
+            "Only permanent_loss or discarded can be set directly; recovery has its own posting command."
+        )
+    _set_context(session, actor_user_id, tenant_id)
+    _require_production_module(session, tenant_id)
+    try:
+        row = session.execute(
+            text(
+                """
+                SELECT id,batch_id,stage,quantity,unit_id,disposition
+                  FROM production_losses
+                 WHERE tenant_id=:tenant_id AND id=:loss_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
+        ).mappings().one_or_none()
+        if row is None:
+            raise ProductionReconciliationError("The production loss was not found.")
+        batch_id = UUID(str(row["batch_id"]))
+        _lock_batch(session, tenant_id, batch_id)
+        locked = session.execute(
+            text(
+                """
+                SELECT id,batch_id,stage,quantity,unit_id,disposition
+                  FROM production_losses
+                 WHERE tenant_id=:tenant_id AND id=:loss_id
+                 FOR UPDATE
+                """
+            ),
+            {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
+        ).mappings().one_or_none()
+        if locked is None:
+            raise ProductionReconciliationError("The production loss no longer exists.")
+        if locked["disposition"] == disposition:
+            return ProductionLossResult(
+                loss_id,batch_id,str(locked["stage"]),Decimal(locked["quantity"]),
+                UUID(str(locked["unit_id"])),disposition
+            )
+        if locked["disposition"] != "pending":
+            raise ProductionReconciliationError("A terminal production loss disposition cannot be changed.")
+        session.execute(
+            text(
+                """
+                UPDATE production_losses SET disposition=:disposition
+                 WHERE tenant_id=:tenant_id AND id=:loss_id
+                """
+            ),
+            {"disposition": disposition, "tenant_id": str(tenant_id), "loss_id": str(loss_id)},
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO tenant_audit_events(
+                    tenant_id,actor_user_id,action,entity_type,entity_id,after_data
+                ) VALUES (
+                    :tenant_id,:actor_user_id,'production.loss.disposition_changed',
+                    'production_loss',:loss_id,
+                    jsonb_build_object('disposition',:disposition)
+                )
+                """
+            ),
+            {
+                "tenant_id": str(tenant_id), "actor_user_id": str(actor_user_id),
+                "loss_id": str(loss_id), "disposition": disposition,
+            },
+        )
+    except DBAPIError as exc:
+        _translate_db_error(exc)
+    return ProductionLossResult(
+        loss_id,batch_id,str(locked["stage"]),Decimal(locked["quantity"]),
+        UUID(str(locked["unit_id"])),disposition
+    )
+
+
 def recover_production_loss(
     session: Session,
     *,

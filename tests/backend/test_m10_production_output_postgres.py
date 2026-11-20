@@ -28,7 +28,7 @@ def test_press_output_posts_inventory_lot_ledger_and_replays_once():
     tenant_id, actor_id = uuid4(), uuid4()
     location_id, production_unit_id, unit_id = uuid4(), uuid4(), uuid4()
     material_id, output_item_id = uuid4(), uuid4()
-    recipe_id, recipe_version_id, batch_id = (uuid4() for _ in range(4))
+    recipe_id, recipe_version_id, batch_id = (uuid4() for _ in range(3))
     warehouse_id, machine_id = uuid4(), uuid4()
     receipt_id, consumption_id = uuid4(), uuid4()
     receipt_line_id, consumption_line_id = uuid4(), uuid4()

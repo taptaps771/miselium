@@ -176,7 +176,6 @@ def post_production_output(
                 SELECT id FROM warehouses
                  WHERE tenant_id=:tenant_id AND id=:warehouse_id
                    AND location_id=:location_id AND is_active
-                 FOR UPDATE
                 """
             ),
             {
@@ -489,6 +488,7 @@ def post_production_output(
             },
         )
     except DBAPIError as exc:
+        print("production_output_db_error:", repr(exc.orig))
         _translate_db_error(exc)
 
     return ProductionOutputResult(

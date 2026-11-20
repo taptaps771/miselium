@@ -100,6 +100,18 @@ BEGIN
     END IF;
 END;
 $m1018_backfill$;
+DO $m1018_recovery_legacy$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM production_recovery_lots
+         WHERE loss_quantity_snapshot IS NULL
+            OR loss_unit_id_snapshot IS NULL
+            OR recovered_item_id IS NULL
+    ) THEN
+        RAISE EXCEPTION 'Legacy recovery lots need a traceable source production lot and inventory item before M10.1.8 migration';
+    END IF;
+END;
+$m1018_recovery_legacy$;
 ALTER TABLE production_recovery_lots
     ALTER COLUMN loss_quantity_snapshot SET NOT NULL,
     ALTER COLUMN loss_unit_id_snapshot SET NOT NULL,

@@ -437,6 +437,15 @@ def move_lot_segment(
     timestamp = occurred_at or datetime.now(UTC)
     if timestamp.tzinfo is None:
         raise ProductionPlacementError("Move timestamp must include a timezone.")
+    for kumbung_id in sorted((source_kumbung_id, destination_kumbung_id), key=str):
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": f"{tenant_id}:kumbung:{kumbung_id}"},
+        )
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"{tenant_id}:lot-segment:{segment_id}"},
+    )
     prior = session.execute(
         text(
             """
@@ -471,15 +480,6 @@ def move_lot_segment(
         )
     first_id, second_id = uuid4(), uuid4()
     try:
-        for kumbung_id in sorted((source_kumbung_id, destination_kumbung_id), key=str):
-            session.execute(
-                text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-                {"lock_key": f"{tenant_id}:kumbung:{kumbung_id}"},
-            )
-        session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-            {"lock_key": f"{tenant_id}:lot-segment:{segment_id}"},
-        )
         for placement_id, kumbung_id, movement_type, delta in (
             (first_id, source_kumbung_id, "move_out", -quantity),
             (second_id, destination_kumbung_id, "move_in", quantity),

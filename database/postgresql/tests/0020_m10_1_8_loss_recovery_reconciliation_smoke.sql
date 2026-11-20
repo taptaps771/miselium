@@ -38,6 +38,10 @@ BEGIN
     ) OR NOT EXISTS (
         SELECT 1 FROM pg_trigger
          WHERE tgrelid='production_lot_segments'::regclass
+           AND tgname='production_lot_segment_00_batch_lock_guard' AND NOT tgisinternal
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+         WHERE tgrelid='production_lot_segments'::regclass
            AND tgname='production_lot_segment_loss_capacity_guard' AND NOT tgisinternal
     ) THEN
         RAISE EXCEPTION 'M10.1.8 loss, recovery or reconciliation guards are missing';

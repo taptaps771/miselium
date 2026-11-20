@@ -23,7 +23,7 @@ ALTER TABLE production_losses
             OR
             (stage<>'kumbung' AND production_lot_segment_id IS NULL
                                AND source_kumbung_id IS NULL)
-        );
+        ) NOT VALID;
 
 CREATE UNIQUE INDEX uq_production_loss_idempotency
     ON production_losses(tenant_id,batch_id,idempotency_key)

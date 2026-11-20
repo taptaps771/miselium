@@ -14,16 +14,11 @@ BEGIN
     END IF;
 
     SELECT count(*) INTO v_count
-      FROM pg_indexes
-     WHERE schemaname=current_schema()
-       AND indexname IN (
-           'production_output_postings_tenant_id_batch_id_key',
-           'production_output_postings_tenant_id_inventory_document_id_key',
-           'production_output_postings_tenant_id_inventory_document_line_id_key',
-           'production_output_postings_tenant_id_production_lot_id_key'
-       );
-    IF v_count <> 4 THEN
-        RAISE EXCEPTION 'Production output posting must be unique per batch, document, line and lot';
+      FROM pg_constraint
+     WHERE conrelid='production_output_postings'::regclass
+       AND contype='u';
+    IF v_count <> 5 THEN
+        RAISE EXCEPTION 'Production output posting must have tenant/id and batch/document/line/lot unique constraints';
     END IF;
 
     IF NOT EXISTS (

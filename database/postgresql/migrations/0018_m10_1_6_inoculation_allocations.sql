@@ -57,7 +57,8 @@ BEGIN
     SELECT production_unit_id, status
       INTO v_run_production_unit, v_run_status
       FROM inoculation_runs
-     WHERE tenant_id=NEW.tenant_id AND id=NEW.inoculation_run_id;
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.inoculation_run_id
+     FOR UPDATE;
     SELECT is_active INTO v_variety_active
       FROM mushroom_varieties
      WHERE tenant_id=NEW.tenant_id AND id=NEW.variety_id;

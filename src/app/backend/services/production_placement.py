@@ -330,7 +330,7 @@ def place_lot_segment(
     if timestamp.tzinfo is None:
         raise ProductionPlacementError("Placement timestamp must include a timezone.")
     try:
-        session.execute(
+        inserted = session.execute(
             text(
                 """
                 INSERT INTO kumbung_placements(
@@ -354,6 +354,8 @@ def place_lot_segment(
                 "actor_user_id": str(actor_user_id), "segment_id": str(segment_id),
             },
         )
+        if inserted.rowcount != 1:
+            raise ProductionPlacementError("The requested variety lot segment was not found.")
         session.execute(
             text(
                 """

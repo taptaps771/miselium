@@ -156,21 +156,21 @@ def schedule_inoculation_run(
                 ),
                 {"tenant_id": str(tenant_id), "run_id": str(existing)},
             ).mappings().all()
-            expected = sorted(
+            expected = sorted((
                 (
                     str(a.batch_id), str(a.variety_id), a.quantity,
                     str(a.unit_id), str(a.seed_lot_id) if a.seed_lot_id else None,
                 )
                 for a in allocations
-            )
-            actual = sorted(
+            ), key=lambda row: tuple(str(value) for value in row))
+            actual = sorted((
                 (
                     str(r["batch_id"]), str(r["variety_id"]), Decimal(r["allocated_quantity"]),
                     str(r["quantity_unit_id"]),
                     str(r["seed_lot_id"]) if r["seed_lot_id"] else None,
                 )
                 for r in rows
-            )
+            ), key=lambda row: tuple(str(value) for value in row))
             if expected != actual:
                 raise InoculationError("The run code already exists with a different allocation payload.")
             return InoculationRunResult(UUID(str(existing)), normalized_code, len(rows), True)

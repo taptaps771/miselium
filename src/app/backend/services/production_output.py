@@ -160,7 +160,7 @@ def post_production_output(
                 "Production output can only be posted after the press-completion transition."
             )
         if not bool(batch["item_is_active"]) or batch["item_type"] not in {
-            "work_in_process", "finished_good"
+            "seed", "work_in_process", "finished_good"
         }:
             raise ProductionOutputError(
                 "The recipe output item must be active and configured as work-in-process or finished-good."
@@ -237,6 +237,17 @@ def post_production_output(
             raise ProductionOutputError("Converted output quantity must be positive.")
         base_unit_cost = (material_cost / base_quantity).quantize(Decimal("0.00000001"))
         display_unit_cost = (material_cost / output_quantity).quantize(Decimal("0.00000001"))
+
+        # Match the advisory-lock key used by generic inventory posting so
+        # inbound production output serializes with concurrent stock issues.
+        stock_lock_key = (
+            f"{tenant_id}:{warehouse_id}:{batch['output_item_id']}:"
+            f"{'PRD-' + batch_id.hex}"
+        )
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": stock_lock_key},
+        )
 
         inventory_lot_id = uuid4()
         production_lot_id = uuid4()
@@ -369,6 +380,31 @@ def post_production_output(
                 "currency": currency, "unit_cost": base_unit_cost,
             },
         )
+        rejected_quantity = Decimal(press["rejected_quantity"])
+        if rejected_quantity > 0:
+            session.execute(
+                text(
+                    """
+                    INSERT INTO production_losses(
+                        tenant_id, batch_id, production_lot_id, stage,
+                        reason_code, quantity, unit_id, recoverable,
+                        disposition, occurred_at, recorded_by, notes
+                    ) VALUES (
+                        :tenant_id, :batch_id, :production_lot_id, 'press_baglog',
+                        'press_reject', :quantity, :unit_id, false,
+                        'pending', now(), :actor_user_id,
+                        'Rejected quantity captured from immutable press output records'
+                    )
+                    """
+                ),
+                {
+                    "tenant_id": str(tenant_id), "batch_id": str(batch_id),
+                    "production_lot_id": str(production_lot_id),
+                    "quantity": rejected_quantity, "unit_id": str(batch["output_unit_id"]),
+                    "actor_user_id": str(actor_user_id),
+                },
+            )
+
         session.execute(
             text(
                 """

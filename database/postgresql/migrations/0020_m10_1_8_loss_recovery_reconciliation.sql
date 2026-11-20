@@ -445,6 +445,57 @@ GRANT SELECT ON production_machine_cost_allocations,production_lot_segments,
 GRANT INSERT ON inventory_lots,inventory_documents,inventory_document_lines,
     inventory_ledger_entries,tenant_audit_events TO miselium_app;
 
+
+CREATE OR REPLACE FUNCTION guard_production_cost_snapshot_insert()
+RETURNS trigger LANGUAGE plpgsql AS $m1018$
+DECLARE
+    v_status varchar(30);
+    v_currency char(3);
+    v_output numeric(24,8);
+    v_material numeric(24,8);
+    v_material_count bigint;
+    v_material_currencies bigint;
+    v_material_currency char(3);
+    v_overhead numeric(24,8);
+    v_overhead_currencies bigint;
+    v_overhead_currency char(3);
+BEGIN
+    SELECT b.status,t.default_currency
+      INTO v_status,v_currency
+      FROM production_batches b
+      JOIN tenants t ON t.id=b.tenant_id
+     WHERE b.tenant_id=NEW.tenant_id AND b.id=NEW.batch_id;
+    SELECT COALESCE(sum(output_quantity),0) INTO v_output
+      FROM production_lots
+     WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id;
+    SELECT count(*),COALESCE(sum(material_cost_snapshot),0),
+           count(DISTINCT currency),min(currency)
+      INTO v_material_count,v_material,v_material_currencies,v_material_currency
+      FROM production_batch_consumptions
+     WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id;
+    SELECT COALESCE(sum(total_cost),0),count(DISTINCT currency),min(currency)
+      INTO v_overhead,v_overhead_currencies,v_overhead_currency
+      FROM production_machine_cost_allocations
+     WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id;
+    IF v_status IS DISTINCT FROM 'ready'
+       OR NEW.output_quantity <> v_output
+       OR v_material_count = 0 OR v_material_currencies <> 1
+       OR v_material_currency <> v_currency
+       OR NEW.material_cost <> v_material
+       OR v_overhead_currencies > 1
+       OR (v_overhead_currencies=1 AND v_overhead_currency <> v_currency)
+       OR NEW.overhead_cost <> v_overhead
+       OR NEW.currency <> v_currency THEN
+        RAISE EXCEPTION 'Cost snapshot must match posted batch consumption, machine overhead and tenant currency'
+            USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END;
+$m1018$;
+CREATE TRIGGER production_cost_snapshot_insert_guard
+    BEFORE INSERT ON production_cost_snapshots
+    FOR EACH ROW EXECUTE FUNCTION guard_production_cost_snapshot_insert();
+
 -- Keep placement capacity and available-segment checks consistent with loss records.
 CREATE OR REPLACE FUNCTION guard_kumbung_placement_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m1017$

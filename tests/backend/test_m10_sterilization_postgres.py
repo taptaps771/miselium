@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.backend.services.inoculation import (
+    InoculationError,
     VarietyAllocation,
     complete_inoculation_run,
     create_incubation_record,
@@ -275,6 +276,34 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
             )
             assert inoculation.allocation_count == 1
             session.commit()
+
+            replay = schedule_inoculation_run(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                production_unit_id=production_unit_id,
+                run_code=f"INOC-{tenant_id.hex[:10]}",
+                allocations=(
+                    VarietyAllocation(
+                        batch_id=batch_id, variety_id=variety_id,
+                        quantity=Decimal("850"), unit_id=unit_id,
+                    ),
+                ),
+            )
+            assert replay.run_id == inoculation.run_id
+            assert replay.was_replayed is True
+
+            with pytest.raises(InoculationError):
+                schedule_inoculation_run(
+                    session, actor_user_id=actor_id, tenant_id=tenant_id,
+                    production_unit_id=production_unit_id,
+                    run_code=f"INOC-OVER-{tenant_id.hex[:8]}",
+                    allocations=(
+                        VarietyAllocation(
+                            batch_id=batch_id, variety_id=variety_id,
+                            quantity=Decimal("100"), unit_id=unit_id,
+                        ),
+                    ),
+                )
+            session.rollback()
 
             completed_inoculation = complete_inoculation_run(
                 session, actor_user_id=actor_id, tenant_id=tenant_id,

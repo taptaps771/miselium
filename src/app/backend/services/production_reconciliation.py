@@ -116,6 +116,7 @@ def _translate_db_error(exc: DBAPIError) -> None:
         "production loss", "loss", "recovery", "reconciliation", "inventory",
         "foreign key", "unique constraint", "check constraint", "duplicate key",
         "cost snapshot", "salvage value", "historical posted production cost",
+        "variety allocations", "already lost",
     )):
         raise ProductionReconciliationError(str(getattr(exc, "orig", exc))) from exc
     raise exc

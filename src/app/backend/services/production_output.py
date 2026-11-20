@@ -394,7 +394,7 @@ def post_production_output(
                     ) VALUES (
                         :tenant_id, :batch_id, :production_lot_id, 'press_baglog',
                         'press_reject', :quantity, :unit_id, false,
-                        'pending', now(), :actor_user_id,
+                        'permanent_loss', now(), :actor_user_id,
                         'Rejected quantity captured from immutable press output records'
                     )
                     """

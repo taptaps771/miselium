@@ -60,6 +60,22 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='production_cost_snapshots'
+           AND column_name='recovery_credit'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='production_cost_snapshots'
+           AND column_name='net_total_cost'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='production_batch_reconciliations'
+           AND column_name='net_cost'
+    ) THEN
+        RAISE EXCEPTION 'M10.1.8 final costing must record salvage credit and net batch cost';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
          WHERE table_schema='public' AND table_name='production_recovery_lots'
            AND column_name='loss_quantity_snapshot'
     ) OR NOT EXISTS (

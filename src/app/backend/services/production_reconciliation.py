@@ -66,6 +66,8 @@ class ProductionReconciliationResult:
     total_cost: Decimal
     currency: str
     transition: BatchTransitionResult
+    gross_cost: Decimal = Decimal("0")
+    recovery_credit: Decimal = Decimal("0")
 
 
 def _set_context(session: Session, actor_user_id: UUID, tenant_id: UUID) -> None:
@@ -811,7 +813,7 @@ def reconcile_and_close_batch(
             text(
                 """
                 SELECT r.id,r.cost_snapshot_id,r.output_quantity,r.placed_quantity,
-                       r.loss_quantity,cs.total_cost,r.currency
+                       r.loss_quantity,cs.net_total_cost,r.gross_cost,r.recovery_credit,r.currency
                   FROM production_batch_reconciliations r
                   JOIN production_cost_snapshots cs
                     ON cs.tenant_id=r.tenant_id AND cs.id=r.cost_snapshot_id
@@ -829,8 +831,9 @@ def reconcile_and_close_batch(
             return ProductionReconciliationResult(
                 batch_id,UUID(str(existing["id"])),UUID(str(existing["cost_snapshot_id"])),
                 Decimal(existing["output_quantity"]),Decimal(existing["placed_quantity"]),
-                Decimal(existing["loss_quantity"]),Decimal(existing["total_cost"]),
+                Decimal(existing["loss_quantity"]),Decimal(existing["net_total_cost"]),
                 str(existing["currency"]).strip(),transition,
+                Decimal(existing["gross_cost"]),Decimal(existing["recovery_credit"]),
             )
 
         if batch["status"] != "ready":
@@ -931,15 +934,33 @@ def reconcile_and_close_batch(
             raise ProductionReconciliationError("Machine overhead must use the tenant base currency.")
         material_cost = Decimal(material["amount"])
         overhead_cost = Decimal(overhead["amount"])
+        recovery_credit = Decimal(session.execute(
+            text(
+                """
+                SELECT COALESCE(sum(r.original_cost_snapshot),0)
+                  FROM production_recovery_lots r
+                  JOIN production_losses l
+                    ON l.tenant_id=r.tenant_id AND l.id=r.loss_id
+                 WHERE r.tenant_id=:tenant_id AND l.batch_id=:batch_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "batch_id": str(batch_id)},
+        ).scalar_one())
+        gross_cost = material_cost + overhead_cost
+        if recovery_credit > gross_cost:
+            raise ProductionReconciliationError(
+                "Recovered material value cannot exceed the batch's posted material and overhead cost."
+            )
+        net_cost = gross_cost - recovery_credit
         snapshot_id = uuid4()
         session.execute(
             text(
                 """
                 INSERT INTO production_cost_snapshots(
                     id,tenant_id,batch_id,output_quantity,material_cost,
-                    overhead_cost,currency,finalized_at,finalized_by
+                    overhead_cost,recovery_credit,currency,finalized_at,finalized_by
                 ) VALUES (
-                    :id,:tenant_id,:batch_id,:output,:material,:overhead,
+                    :id,:tenant_id,:batch_id,:output,:material,:overhead,:recovery_credit,
                     :currency,now(),:actor_user_id
                 )
                 """
@@ -948,6 +969,7 @@ def reconcile_and_close_batch(
                 "id": str(snapshot_id), "tenant_id": str(tenant_id),
                 "batch_id": str(batch_id), "output": output,
                 "material": material_cost, "overhead": overhead_cost,
+                "recovery_credit": recovery_credit,
                 "currency": currency, "actor_user_id": str(actor_user_id),
             },
         )
@@ -957,10 +979,12 @@ def reconcile_and_close_batch(
                 """
                 INSERT INTO production_batch_reconciliations(
                     id,tenant_id,batch_id,cost_snapshot_id,output_quantity,
-                    placed_quantity,loss_quantity,accounted_quantity,currency,finalized_by
+                    placed_quantity,loss_quantity,accounted_quantity,
+                    gross_cost,recovery_credit,net_cost,currency,finalized_by
                 ) VALUES (
                     :id,:tenant_id,:batch_id,:snapshot_id,:output,
-                    :placed,:losses,:accounted,:currency,:actor_user_id
+                    :placed,:losses,:accounted,:gross_cost,:recovery_credit,:net_cost,
+                    :currency,:actor_user_id
                 )
                 """
             ),
@@ -968,8 +992,9 @@ def reconcile_and_close_batch(
                 "id": str(reconciliation_id), "tenant_id": str(tenant_id),
                 "batch_id": str(batch_id), "snapshot_id": str(snapshot_id),
                 "output": output, "placed": placed, "losses": losses,
-                "accounted": placed + losses, "currency": currency,
-                "actor_user_id": str(actor_user_id),
+                "accounted": placed + losses, "gross_cost": gross_cost,
+                "recovery_credit": recovery_credit, "net_cost": net_cost,
+                "currency": currency, "actor_user_id": str(actor_user_id),
             },
         )
         transition = transition_production_batch(
@@ -983,5 +1008,5 @@ def reconcile_and_close_batch(
         _translate_db_error(exc)
     return ProductionReconciliationResult(
         batch_id,reconciliation_id,snapshot_id,output,placed,losses,
-        material_cost+overhead_cost,currency,transition,
+        net_cost,currency,transition,gross_cost,recovery_credit,
     )

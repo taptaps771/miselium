@@ -344,7 +344,12 @@ BEGIN
     SELECT COALESCE(sum(output_quantity),0) INTO v_output
       FROM production_lots
      WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id;
-    SELECT COALESCE(sum(p.quantity_delta),0) INTO v_placed
+    SELECT COALESCE(sum(p.quantity_delta),0) - COALESCE((
+               SELECT sum(l.quantity) FROM production_losses l
+                WHERE l.tenant_id=NEW.tenant_id AND l.batch_id=NEW.batch_id
+                  AND l.stage='kumbung'
+                  AND l.disposition IN ('recovered','recycled','permanent_loss','discarded')
+           ),0) INTO v_placed
       FROM kumbung_placements p
       JOIN production_lot_segments s
         ON s.tenant_id=p.tenant_id AND s.id=p.production_lot_segment_id

@@ -319,6 +319,28 @@ CREATE TRIGGER production_loss_insert_guard
     BEFORE INSERT ON production_losses
     FOR EACH ROW EXECUTE FUNCTION guard_production_loss_insert();
 
+CREATE OR REPLACE FUNCTION guard_production_lot_segment_batch_lock()
+RETURNS trigger LANGUAGE plpgsql AS $m1018$
+DECLARE
+    v_batch_id uuid;
+BEGIN
+    SELECT batch_id INTO v_batch_id
+      FROM production_lots
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_id;
+    IF v_batch_id IS NULL THEN
+        RAISE EXCEPTION 'Variety segment requires a tenant-owned production lot'
+            USING ERRCODE='23503';
+    END IF;
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.tenant_id::text || ':production-batch:' || v_batch_id::text,0)
+    );
+    RETURN NEW;
+END;
+$m1018$;
+CREATE TRIGGER production_lot_segment_00_batch_lock_guard
+    BEFORE INSERT ON production_lot_segments
+    FOR EACH ROW EXECUTE FUNCTION guard_production_lot_segment_batch_lock();
+
 CREATE OR REPLACE FUNCTION guard_production_lot_segment_loss_capacity()
 RETURNS trigger LANGUAGE plpgsql AS $m1018$
 DECLARE

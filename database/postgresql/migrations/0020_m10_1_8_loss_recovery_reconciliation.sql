@@ -373,6 +373,14 @@ DECLARE
     v_ledger_value numeric(24,8);
     v_ledger_currency char(3);
 BEGIN
+    SELECT batch_id INTO v_loss_batch
+      FROM production_losses
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.loss_id;
+    IF v_loss_batch IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(NEW.tenant_id::text || ':production-batch:' || v_loss_batch::text,0)
+        );
+    END IF;
     SELECT l.quantity,l.unit_id,l.recoverable,l.disposition,src_lot.item_id,l.batch_id
       INTO v_loss_quantity,v_loss_unit,v_loss_recoverable,v_loss_disposition,v_source_item,v_loss_batch
       FROM production_losses l
@@ -382,11 +390,6 @@ BEGIN
         ON src_lot.tenant_id=pl.tenant_id AND src_lot.id=pl.inventory_lot_id
      WHERE l.tenant_id=NEW.tenant_id AND l.id=NEW.loss_id
      FOR UPDATE OF l;
-    IF v_loss_batch IS NOT NULL THEN
-        PERFORM pg_advisory_xact_lock(
-            hashtextextended(NEW.tenant_id::text || ':production-batch:' || v_loss_batch::text,0)
-        );
-    END IF;
     IF v_loss_quantity IS NULL OR v_loss_recoverable IS DISTINCT FROM true
        OR v_loss_disposition <> 'pending'
        OR NEW.loss_quantity_snapshot <> v_loss_quantity

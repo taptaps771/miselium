@@ -386,11 +386,6 @@ CREATE TRIGGER sterilization_run_batches_immutable
     BEFORE UPDATE OR DELETE ON sterilization_run_batches
     FOR EACH ROW EXECUTE FUNCTION reject_sterilization_configuration_mutation();
 
-ALTER TABLE measurement_unit_conversions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE measurement_unit_conversions FORCE ROW LEVEL SECURITY;
-CREATE POLICY measurement_unit_conversions_read ON measurement_unit_conversions
-    FOR SELECT USING (true);
-
 ALTER TABLE sterilization_cycle_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sterilization_cycle_events FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON sterilization_cycle_events

@@ -128,6 +128,9 @@ CREATE TABLE production_batch_reconciliations (
     placed_quantity numeric(24,8) NOT NULL CHECK (placed_quantity >= 0),
     loss_quantity numeric(24,8) NOT NULL CHECK (loss_quantity >= 0),
     accounted_quantity numeric(24,8) NOT NULL CHECK (accounted_quantity > 0),
+    gross_cost numeric(24,8) NOT NULL CHECK (gross_cost >= 0),
+    recovery_credit numeric(24,8) NOT NULL CHECK (recovery_credit >= 0),
+    net_cost numeric(24,8) NOT NULL CHECK (net_cost >= 0),
     currency char(3) NOT NULL,
     finalized_at timestamptz NOT NULL DEFAULT now(),
     finalized_by uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -138,7 +141,8 @@ CREATE TABLE production_batch_reconciliations (
     FOREIGN KEY (tenant_id,cost_snapshot_id)
         REFERENCES production_cost_snapshots(tenant_id,id) ON DELETE RESTRICT,
     CHECK (accounted_quantity = placed_quantity + loss_quantity),
-    CHECK (accounted_quantity = output_quantity)
+    CHECK (accounted_quantity = output_quantity),
+    CHECK (net_cost = gross_cost - recovery_credit)
 );
 CREATE INDEX ix_production_batch_reconciliations_finalized
     ON production_batch_reconciliations(tenant_id,finalized_at DESC);
@@ -470,6 +474,9 @@ DECLARE
     v_snapshot_batch uuid;
     v_snapshot_output numeric(24,8);
     v_snapshot_currency char(3);
+    v_snapshot_gross_cost numeric(24,8);
+    v_snapshot_recovery_credit numeric(24,8);
+    v_snapshot_net_cost numeric(24,8);
 BEGIN
     PERFORM pg_advisory_xact_lock(
         hashtextextended(NEW.tenant_id::text || ':production-batch:' || NEW.batch_id::text,0)
@@ -505,14 +512,18 @@ BEGIN
       FROM production_losses l
      WHERE l.tenant_id=NEW.tenant_id AND l.batch_id=NEW.batch_id
        AND l.stage <> 'press_baglog';
-    SELECT batch_id,output_quantity,currency
-      INTO v_snapshot_batch,v_snapshot_output,v_snapshot_currency
+    SELECT batch_id,output_quantity,currency,total_cost,recovery_credit,net_total_cost
+      INTO v_snapshot_batch,v_snapshot_output,v_snapshot_currency,
+           v_snapshot_gross_cost,v_snapshot_recovery_credit,v_snapshot_net_cost
       FROM production_cost_snapshots
      WHERE tenant_id=NEW.tenant_id AND id=NEW.cost_snapshot_id;
     IF v_status IS DISTINCT FROM 'ready'
        OR v_snapshot_batch IS DISTINCT FROM NEW.batch_id
        OR v_snapshot_output IS DISTINCT FROM NEW.output_quantity
        OR v_snapshot_currency IS DISTINCT FROM NEW.currency
+       OR v_snapshot_gross_cost IS DISTINCT FROM NEW.gross_cost
+       OR v_snapshot_recovery_credit IS DISTINCT FROM NEW.recovery_credit
+       OR v_snapshot_net_cost IS DISTINCT FROM NEW.net_cost
        OR v_pending <> 0 OR v_missing_recovery <> 0
        OR v_output <> NEW.output_quantity
        OR v_placed <> NEW.placed_quantity
@@ -575,6 +586,16 @@ GRANT INSERT ON inventory_lots,inventory_documents,inventory_document_lines,
     inventory_ledger_entries,tenant_audit_events TO miselium_app;
 
 
+ALTER TABLE production_cost_snapshots
+    ADD COLUMN recovery_credit numeric(24,8) NOT NULL DEFAULT 0
+        CHECK (recovery_credit >= 0),
+    ADD COLUMN net_total_cost numeric(24,8)
+        GENERATED ALWAYS AS (material_cost + overhead_cost - recovery_credit) STORED,
+    ADD COLUMN net_unit_cost numeric(24,10)
+        GENERATED ALWAYS AS ((material_cost + overhead_cost - recovery_credit) / output_quantity) STORED,
+    ADD CONSTRAINT production_cost_snapshot_recovery_credit_check
+        CHECK (recovery_credit <= material_cost + overhead_cost);
+
 CREATE OR REPLACE FUNCTION guard_production_cost_snapshot_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m1018$
 DECLARE
@@ -588,6 +609,7 @@ DECLARE
     v_overhead numeric(24,8);
     v_overhead_currencies bigint;
     v_overhead_currency char(3);
+    v_recovery_credit numeric(24,8);
 BEGIN
     SELECT b.status,t.default_currency
       INTO v_status,v_currency
@@ -606,6 +628,11 @@ BEGIN
       INTO v_overhead,v_overhead_currencies,v_overhead_currency
       FROM production_machine_cost_allocations
      WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id;
+    SELECT COALESCE(sum(r.original_cost_snapshot),0) INTO v_recovery_credit
+      FROM production_recovery_lots r
+      JOIN production_losses l
+        ON l.tenant_id=r.tenant_id AND l.id=r.loss_id
+     WHERE r.tenant_id=NEW.tenant_id AND l.batch_id=NEW.batch_id;
     IF v_status IS DISTINCT FROM 'ready'
        OR NEW.output_quantity <> v_output
        OR v_material_count = 0 OR v_material_currencies <> 1
@@ -614,6 +641,7 @@ BEGIN
        OR v_overhead_currencies > 1
        OR (v_overhead_currencies=1 AND v_overhead_currency <> v_currency)
        OR NEW.overhead_cost <> v_overhead
+       OR NEW.recovery_credit <> v_recovery_credit
        OR NEW.currency <> v_currency THEN
         RAISE EXCEPTION 'Cost snapshot must match posted batch consumption, machine overhead and tenant currency'
             USING ERRCODE='23514';

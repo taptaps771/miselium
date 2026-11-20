@@ -173,8 +173,8 @@ def test_production_loss_idempotency_and_immutable_event_history():
                         occurred_at,posted_at,posted_by,source_reference_type,
                         source_reference_id,notes,created_by
                     ) VALUES (
-                        :id,:tenant_id,:document_no,'production_consumption','posted',:warehouse_id,
-                        now(),now(),:actor_id,'production_batch',:batch_id,'M10 cost fixture',:actor_id
+                        :id,:tenant_id,:document_no,'production_consumption','draft',:warehouse_id,
+                        now(),NULL,NULL,'production_batch',:batch_id,'M10 cost fixture',:actor_id
                     )
                     """
                 ),
@@ -203,6 +203,19 @@ def test_production_loss_idempotency_and_immutable_event_history():
                     "document_id": consumption_document_id, "item_id": item_id,
                     "lot_id": inventory_lot_id, "item_code": f"LOSS-ITEM-{tenant_id.hex[:8]}",
                     "unit_id": unit_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE inventory_documents
+                       SET status='posted',posted_at=now(),posted_by=:actor_id,updated_at=now()
+                     WHERE tenant_id=:tenant_id AND id=:document_id
+                    """
+                ),
+                {
+                    "actor_id": actor_id, "tenant_id": tenant_id,
+                    "document_id": consumption_document_id,
                 },
             )
             connection.execute(

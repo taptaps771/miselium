@@ -54,12 +54,32 @@ ALTER TABLE production_recovery_lots
     ADD COLUMN inventory_document_id uuid,
     ADD COLUMN inventory_document_line_id uuid,
     ADD COLUMN recovered_by uuid REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN loss_quantity_snapshot numeric(24,8),
+    ADD COLUMN loss_unit_id_snapshot uuid REFERENCES measurement_units(id) ON DELETE RESTRICT,
+    ADD COLUMN recovery_mode varchar(24) NOT NULL DEFAULT 'direct_resterilize'
+        CHECK (recovery_mode IN ('direct_resterilize','recycle_to_mixing')),
+    ADD COLUMN recovered_item_id uuid,
     ADD CONSTRAINT production_recovery_lot_document_fk
         FOREIGN KEY (tenant_id,inventory_document_id)
         REFERENCES inventory_documents(tenant_id,id) ON DELETE RESTRICT,
     ADD CONSTRAINT production_recovery_lot_line_fk
         FOREIGN KEY (tenant_id,inventory_document_line_id)
-        REFERENCES inventory_document_lines(tenant_id,id) ON DELETE RESTRICT;
+        REFERENCES inventory_document_lines(tenant_id,id) ON DELETE RESTRICT,
+    ADD CONSTRAINT production_recovery_lot_item_fk
+        FOREIGN KEY (tenant_id,recovered_item_id)
+        REFERENCES inventory_items(tenant_id,id) ON DELETE RESTRICT;
+UPDATE production_recovery_lots r
+   SET loss_quantity_snapshot=l.quantity,
+       loss_unit_id_snapshot=l.unit_id,
+       recovered_item_id=il.item_id
+  FROM production_losses l
+  JOIN inventory_lots il ON il.tenant_id=l.tenant_id
+ WHERE l.tenant_id=r.tenant_id AND l.id=r.loss_id
+   AND il.tenant_id=r.tenant_id AND il.id=r.recovered_inventory_lot_id;
+ALTER TABLE production_recovery_lots
+    ALTER COLUMN loss_quantity_snapshot SET NOT NULL,
+    ALTER COLUMN loss_unit_id_snapshot SET NOT NULL,
+    ALTER COLUMN recovered_item_id SET NOT NULL;
 CREATE UNIQUE INDEX uq_production_recovery_loss
     ON production_recovery_lots(tenant_id,loss_id);
 
@@ -235,7 +255,7 @@ BEGIN
             USING ERRCODE='55000';
     END IF;
     IF NEW.disposition IN ('recovered','recycled') THEN
-        SELECT COALESCE(sum(recovered_quantity),0) INTO v_recovery_quantity
+        SELECT COALESCE(sum(loss_quantity_snapshot),0) INTO v_recovery_quantity
           FROM production_recovery_lots
          WHERE tenant_id=NEW.tenant_id AND loss_id=NEW.id;
         IF v_recovery_quantity <> NEW.quantity THEN
@@ -389,7 +409,7 @@ BEGIN
                  AND NOT EXISTS (
                      SELECT 1 FROM production_recovery_lots r
                       WHERE r.tenant_id=l.tenant_id AND r.loss_id=l.id
-                        AND r.recovered_quantity=l.quantity
+                        AND r.loss_quantity_snapshot=l.quantity
                  )
            )
       INTO v_losses,v_pending,v_missing_recovery

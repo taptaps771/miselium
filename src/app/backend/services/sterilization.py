@@ -8,6 +8,7 @@ is required.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Sequence
@@ -106,13 +107,17 @@ def _unit_factor(
 
 
 def _lock_resources(
-    session: Session, tenant_id: UUID, resource_ids: Sequence[UUID]
+    session: Session,
+    tenant_id: UUID,
+    resource_ids: Sequence[UUID],
+    *,
+    namespace: str = "sterilizer",
 ) -> None:
-    # Stable ordering prevents deadlocks when a cycle contains several machines.
+    # Stable ordering prevents deadlocks when a cycle contains several resources.
     for resource_id in sorted(set(resource_ids), key=str):
         session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-            {"lock_key": f"{tenant_id}:sterilizer:{resource_id}"},
+            {"lock_key": f"{tenant_id}:{namespace}:{resource_id}"},
         )
 
 
@@ -142,7 +147,7 @@ def _append_event(
             "tenant_id": str(tenant_id), "cycle_id": str(cycle_id),
             "event_type": event_type, "run_id": str(run_id) if run_id else None,
             "actor_user_id": str(actor_user_id),
-            "metadata": __import__("json").dumps(metadata or {}, sort_keys=True),
+            "metadata": json.dumps(metadata or {}, sort_keys=True),
         },
     )
 
@@ -178,6 +183,12 @@ def schedule_sterilization_cycle(
     _set_context(session, actor_user_id, tenant_id)
     _require_production_module(session, tenant_id)
     _lock_resources(session, tenant_id, machine_ids)
+    batch_ids = [
+        allocation.batch_id
+        for entry in sterilizers
+        for allocation in entry.allocations
+    ]
+    _lock_resources(session, tenant_id, batch_ids, namespace="production-batch")
 
     try:
         machines = {}
@@ -436,6 +447,19 @@ def start_sterilization_run(
         if run is None:
             raise SterilizationError("Sterilization run was not found.")
         _lock_resources(session, tenant_id, [UUID(str(run["sterilizer_id"]))])
+        run = session.execute(
+            text(
+                """
+                SELECT sr.id, sr.cycle_id, sr.sterilizer_id, sr.status,
+                       sr.planned_start_at, sc.status AS cycle_status
+                  FROM sterilization_runs sr
+                  JOIN sterilization_cycles sc
+                    ON sc.tenant_id=sr.tenant_id AND sc.id=sr.cycle_id
+                 WHERE sr.tenant_id=:tenant_id AND sr.id=:run_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "run_id": str(run_id)},
+        ).mappings().one()
         if run["status"] != "planned" or run["cycle_status"] not in {"planned", "running"}:
             raise SterilizationError("Only a planned run in an active cycle can be started.")
         if run["planned_start_at"] > datetime.now(timezone.utc):
@@ -482,14 +506,27 @@ def complete_sterilization_run(
     run = session.execute(
         text(
             """
-            SELECT id, cycle_id, status, cooling_minutes_snapshot
+            SELECT id, cycle_id, sterilizer_id, status, cooling_minutes_snapshot
               FROM sterilization_runs
              WHERE tenant_id=:tenant_id AND id=:run_id
             """
         ),
         {"tenant_id": str(tenant_id), "run_id": str(run_id)},
     ).mappings().one_or_none()
-    if run is None or run["status"] != "running":
+    if run is None:
+        raise SterilizationError("Sterilization run was not found.")
+    _lock_resources(session, tenant_id, [UUID(str(run["sterilizer_id"]))])
+    run = session.execute(
+        text(
+            """
+            SELECT id, cycle_id, status, cooling_minutes_snapshot
+              FROM sterilization_runs
+             WHERE tenant_id=:tenant_id AND id=:run_id
+            """
+        ),
+        {"tenant_id": str(tenant_id), "run_id": str(run_id)},
+    ).mappings().one()
+    if run["status"] != "running":
         raise SterilizationError("Only a running sterilization run can be completed.")
     due = session.execute(
         text(
@@ -543,6 +580,7 @@ def complete_sterilization_cooling(
     """Record cooling readiness only after every run's snapshotted cooling duration."""
     _set_context(session, actor_user_id, tenant_id)
     _require_production_module(session, tenant_id)
+    _lock_resources(session, tenant_id, [cycle_id], namespace="sterilization-cycle")
     cycle = session.execute(
         text(
             """

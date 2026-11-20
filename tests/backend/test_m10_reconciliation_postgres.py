@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.backend.services.production_reconciliation import (
     ProductionReconciliationError,
     record_production_loss,
+    recover_production_loss,
 )
 
 
@@ -27,6 +28,7 @@ def test_production_loss_idempotency_and_immutable_event_history():
     tenant_id, actor_id = uuid4(), uuid4()
     location_id, production_unit_id, unit_id = uuid4(), uuid4(), uuid4()
     item_id, recipe_id, recipe_version_id, batch_id = (uuid4() for _ in range(4))
+    inventory_lot_id, production_lot_id, warehouse_id = uuid4(), uuid4(), uuid4()
     admin_engine = create_engine(admin_url)
     runtime_engine = create_engine(runtime_url)
 
@@ -95,6 +97,30 @@ def test_production_loss_idempotency_and_immutable_event_history():
             connection.execute(
                 text(
                     """
+                    INSERT INTO inventory_lots(id,tenant_id,item_id,lot_code,status)
+                    VALUES (:id,:tenant_id,:item_id,:lot_code,'active')
+                    """
+                ),
+                {
+                    "id": inventory_lot_id, "tenant_id": tenant_id, "item_id": item_id,
+                    "lot_code": f"LOSS-LOT-{tenant_id.hex[:8]}",
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO warehouses(id,tenant_id,location_id,code,name,is_active)
+                    VALUES (:id,:tenant_id,:location_id,:code,'Recovery warehouse',true)
+                    """
+                ),
+                {
+                    "id": warehouse_id, "tenant_id": tenant_id, "location_id": location_id,
+                    "code": f"LOSS-WH-{tenant_id.hex[:8]}",
+                },
+            )
+            connection.execute(
+                text(
+                    """
                     INSERT INTO recipes(id,tenant_id,code,name,production_type,output_item_id)
                     VALUES (:id,:tenant_id,:code,'Loss recipe','baglog',:item_id)
                     """
@@ -136,6 +162,20 @@ def test_production_loss_idempotency_and_immutable_event_history():
                     "recipe_version_id": recipe_version_id, "unit_id": unit_id,
                 },
             )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO production_lots(
+                        id,tenant_id,batch_id,inventory_lot_id,variety_id,
+                        output_quantity,output_unit_id,produced_at
+                    ) VALUES (:id,:tenant_id,:batch_id,:inventory_lot_id,NULL,100,:unit_id,now())
+                    """
+                ),
+                {
+                    "id": production_lot_id, "tenant_id": tenant_id, "batch_id": batch_id,
+                    "inventory_lot_id": inventory_lot_id, "unit_id": unit_id,
+                },
+            )
 
         with Session(runtime_engine) as session:
             first = record_production_loss(
@@ -161,18 +201,75 @@ def test_production_loss_idempotency_and_immutable_event_history():
                     disposition="permanent_loss", notes="Different payload",
                 )
             session.rollback()
+
+            recoverable = record_production_loss(
+                session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,
+                stage="sterilization", idempotency_key=f"sterilization-loss-{batch_id.hex}",
+                reason_code="baglog_damage", quantity=Decimal("5"), unit_id=unit_id,
+                recoverable=True, production_lot_id=production_lot_id,
+                notes="Baglog damaged but material remains reusable",
+            )
+            session.commit()
+            recovered = recover_production_loss(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                loss_id=recoverable.loss_id, warehouse_id=warehouse_id,
+                material_value_snapshot=Decimal("8"),
+                recovery_cost_snapshot=Decimal("4"),
+                notes="Reuse salvageable material",
+            )
+            assert recovered.quantity == Decimal("5")
+            assert recovered.total_cost == Decimal("12")
+            session.commit()
+            replayed_recovery = recover_production_loss(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                loss_id=recoverable.loss_id, warehouse_id=warehouse_id,
+                material_value_snapshot=Decimal("8"),
+                recovery_cost_snapshot=Decimal("4"),
+            )
+            assert replayed_recovery.recovery_lot_id == recovered.recovery_lot_id
+            session.commit()
+
             session.execute(
                 text("SELECT set_config('app.tenant_id',:tenant_id,true)"),
                 {"tenant_id": str(tenant_id)},
             )
-            event_count = session.execute(
+            event_counts = session.execute(
                 text(
-                    "SELECT count(*) FROM production_loss_events "
-                    "WHERE tenant_id=:tenant_id AND loss_id=:loss_id"
+                    """
+                    SELECT loss_id,count(*) AS events
+                      FROM production_loss_events
+                     WHERE tenant_id=:tenant_id AND loss_id IN (:loss_a,:loss_b)
+                     GROUP BY loss_id
+                    """
                 ),
-                {"tenant_id": str(tenant_id), "loss_id": str(first.loss_id)},
-            ).scalar_one()
-            assert int(event_count) == 2
+                {
+                    "tenant_id": str(tenant_id), "loss_a": str(first.loss_id),
+                    "loss_b": str(recoverable.loss_id),
+                },
+            ).mappings().all()
+            assert {str(row["loss_id"]): int(row["events"]) for row in event_counts} == {
+                str(first.loss_id): 2, str(recoverable.loss_id): 3,
+            }
+            recovery_ledger = session.execute(
+                text(
+                    """
+                    SELECT d.status,le.quantity_delta,le.value_delta,rr.disposition
+                      FROM production_recovery_lots r
+                      JOIN inventory_documents d
+                        ON d.tenant_id=r.tenant_id AND d.id=r.inventory_document_id
+                      JOIN inventory_ledger_entries le
+                        ON le.tenant_id=r.tenant_id AND le.document_id=d.id
+                      JOIN production_losses rr
+                        ON rr.tenant_id=r.tenant_id AND rr.id=r.loss_id
+                     WHERE r.tenant_id=:tenant_id AND r.id=:recovery_id
+                    """
+                ),
+                {"tenant_id": str(tenant_id), "recovery_id": str(recovered.recovery_lot_id)},
+            ).mappings().one()
+            assert recovery_ledger["status"] == "posted"
+            assert Decimal(recovery_ledger["quantity_delta"]) == Decimal("5")
+            assert Decimal(recovery_ledger["value_delta"]) == Decimal("12")
+            assert recovery_ledger["disposition"] == "recovered"
     finally:
         runtime_engine.dispose()
         admin_engine.dispose()

@@ -71,11 +71,35 @@ ALTER TABLE production_recovery_lots
 UPDATE production_recovery_lots r
    SET loss_quantity_snapshot=l.quantity,
        loss_unit_id_snapshot=l.unit_id,
-       recovered_item_id=il.item_id
+       recovered_item_id=il.item_id,
+       recovery_mode=CASE
+           WHEN il.item_id=source_lot.item_id
+            AND r.recovered_quantity=l.quantity AND r.unit_id=l.unit_id
+           THEN 'direct_resterilize'
+           ELSE 'recycle_to_mixing'
+       END
   FROM production_losses l
+  JOIN production_lots pl
+    ON pl.tenant_id=l.tenant_id AND pl.id=l.production_lot_id
+  JOIN inventory_lots source_lot
+    ON source_lot.tenant_id=pl.tenant_id AND source_lot.id=pl.inventory_lot_id
   JOIN inventory_lots il ON il.tenant_id=l.tenant_id
  WHERE l.tenant_id=r.tenant_id AND l.id=r.loss_id
    AND il.tenant_id=r.tenant_id AND il.id=r.recovered_inventory_lot_id;
+DO $m1018_backfill$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+          FROM production_recovery_lots r
+          JOIN inventory_items i
+            ON i.tenant_id=r.tenant_id AND i.id=r.recovered_item_id
+         WHERE r.recovery_mode='recycle_to_mixing'
+           AND i.item_type <> 'raw_material'
+    ) THEN
+        RAISE EXCEPTION 'Legacy partial or cross-item recovery must target a raw-material item before M10.1.8 can be applied';
+    END IF;
+END;
+$m1018_backfill$;
 ALTER TABLE production_recovery_lots
     ALTER COLUMN loss_quantity_snapshot SET NOT NULL,
     ALTER COLUMN loss_unit_id_snapshot SET NOT NULL,

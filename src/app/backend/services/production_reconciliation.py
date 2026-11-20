@@ -609,8 +609,8 @@ def reconcile_and_close_batch(
             ),
             {"tenant_id": str(tenant_id), "batch_id": str(batch_id)},
         ).mappings().one_or_none()
-        if batch is None or batch["status"] != "ready":
-            raise ProductionReconciliationError("Only a ready production batch can be reconciled and closed.")
+        if batch is None:
+            raise ProductionReconciliationError("The production batch was not found.")
         existing = session.execute(
             text(
                 """
@@ -636,6 +636,9 @@ def reconcile_and_close_batch(
                 Decimal(existing["loss_quantity"]),Decimal(existing["total_cost"]),
                 str(existing["currency"]).strip(),transition,
             )
+
+        if batch["status"] != "ready":
+            raise ProductionReconciliationError("Only a ready production batch can be reconciled and closed.")
 
         output = Decimal(session.execute(
             text(

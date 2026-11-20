@@ -31,6 +31,10 @@ BEGIN
         SELECT 1 FROM pg_trigger
          WHERE tgrelid='production_batch_reconciliations'::regclass
            AND tgname='production_batch_reconciliation_insert_guard' AND NOT tgisinternal
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+         WHERE tgrelid='production_cost_snapshots'::regclass
+           AND tgname='production_cost_snapshot_insert_guard' AND NOT tgisinternal
     ) THEN
         RAISE EXCEPTION 'M10.1.8 loss, recovery or reconciliation guards are missing';
     END IF;

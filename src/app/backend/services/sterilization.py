@@ -185,9 +185,11 @@ def schedule_sterilization_cycle(
     if any(not entry.allocations for entry in sterilizers):
         raise SterilizationError("Every participating sterilizer needs at least one batch allocation.")
 
+    cycle_id = uuid4()
     _set_context(session, actor_user_id, tenant_id)
     _require_production_module(session, tenant_id)
     _lock_resources(session, tenant_id, machine_ids)
+    _lock_resources(session, tenant_id, [cycle_id], namespace="sterilization-cycle")
     batch_ids = [
         allocation.batch_id
         for entry in sterilizers
@@ -297,8 +299,7 @@ def schedule_sterilization_cycle(
                 "Combined cycle allocation exceeds the sum of participating sterilizer capacities."
             )
 
-        cycle_id = uuid4()
-        session.execute(
+            session.execute(
             text(
                 """
                 INSERT INTO sterilization_cycles(

@@ -249,9 +249,16 @@ def mark_incubation_ready(
         if record is None:
             raise ProductionPlacementError("The incubation record was not found.")
         if record["status"] == "ready_to_move":
-            return IncubationReadyResult(
-                incubation_record_id, batch_id, now, True
+            transition_production_batch(
+                session,
+                actor_user_id=actor_user_id,
+                tenant_id=tenant_id,
+                batch_id=batch_id,
+                command="mark_ready_for_kumbung",
+                idempotency_key=idempotency_key,
+                notes=notes,
             )
+            return IncubationReadyResult(incubation_record_id,batch_id,now,True)
         if record["status"] != "incubating":
             raise ProductionPlacementError("Only an active incubation record can be marked ready.")
         if record["expected_move_at"] > now:

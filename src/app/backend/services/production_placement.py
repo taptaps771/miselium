@@ -325,10 +325,23 @@ def place_lot_segment(
         raise ProductionPlacementError("Placement quantity must be positive.")
     _set_context(session, actor_user_id, tenant_id)
     _require_production_module(session, tenant_id)
-    _lock_key = f"{tenant_id}:lot-segment:{segment_id}"
+    segment_batch_id = session.execute(
+        text(
+            "SELECT batch_id FROM production_lot_segments "
+            "WHERE tenant_id=:tenant_id AND id=:segment_id"
+        ),
+        {"tenant_id": str(tenant_id), "segment_id": str(segment_id)},
+    ).scalar_one_or_none()
+    if segment_batch_id is None:
+        raise ProductionPlacementError("The requested variety lot segment was not found.")
+    _lock_batch(session, tenant_id, UUID(str(segment_batch_id)))
     session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-        {"lock_key": _lock_key},
+        {"lock_key": f"{tenant_id}:kumbung:{kumbung_id}"},
+    )
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"{tenant_id}:lot-segment:{segment_id}"},
     )
     ref = reference_id or uuid4()
     existing = session.execute(
@@ -437,6 +450,16 @@ def move_lot_segment(
     timestamp = occurred_at or datetime.now(UTC)
     if timestamp.tzinfo is None:
         raise ProductionPlacementError("Move timestamp must include a timezone.")
+    segment_batch_id = session.execute(
+        text(
+            "SELECT batch_id FROM production_lot_segments "
+            "WHERE tenant_id=:tenant_id AND id=:segment_id"
+        ),
+        {"tenant_id": str(tenant_id), "segment_id": str(segment_id)},
+    ).scalar_one_or_none()
+    if segment_batch_id is None:
+        raise ProductionPlacementError("The requested variety lot segment was not found.")
+    _lock_batch(session, tenant_id, UUID(str(segment_batch_id)))
     for kumbung_id in sorted((source_kumbung_id, destination_kumbung_id), key=str):
         session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),

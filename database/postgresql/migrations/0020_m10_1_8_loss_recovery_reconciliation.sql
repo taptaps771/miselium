@@ -97,7 +97,6 @@ DECLARE
     v_press_rejects numeric(24,8);
     v_press_lot_batch uuid;
     v_segment_batch uuid;
-    v_lock_batch uuid;
     v_segment_lot uuid;
     v_segment_unit uuid;
     v_kumbung_location uuid;
@@ -515,6 +514,7 @@ CREATE OR REPLACE FUNCTION guard_kumbung_placement_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m1017$
 DECLARE
     v_segment_batch uuid;
+    v_lock_batch uuid;
     v_segment_lot uuid;
     v_segment_unit uuid;
     v_segment_quantity numeric(24,8);

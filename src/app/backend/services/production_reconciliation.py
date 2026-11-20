@@ -552,8 +552,14 @@ def recover_production_loss(
         if str(loss_unit_id) != str(loss["output_unit_id"]):
             raise ProductionReconciliationError("Loss quantity unit must match its source production lot.")
         if recovery_mode == "direct_resterilize":
-            if recovered_item_id is not None and recovered_item_id != UUID(str(loss["item_id"])):
-                raise ProductionReconciliationError("Direct resterilization must preserve the source inventory item.")
+            if (
+                (recovered_item_id is not None and recovered_item_id != UUID(str(loss["item_id"])))
+                or (recovered_quantity is not None and recovered_quantity != loss_quantity)
+                or (recovered_unit_id is not None and recovered_unit_id != loss_unit_id)
+            ):
+                raise ProductionReconciliationError(
+                    "Direct resterilization must preserve the source inventory item, quantity and unit."
+                )
             target_item_id = UUID(str(loss["item_id"]))
             target_quantity = loss_quantity
             target_unit_id = loss_unit_id

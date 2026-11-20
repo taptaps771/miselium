@@ -45,11 +45,15 @@ DECLARE
     v_line_document_id uuid;
     v_line_lot_id uuid;
     v_line_base_quantity numeric(24,8);
+    v_line_quantity numeric(24,8);
+    v_line_unit_id uuid;
     v_lot_batch_id uuid;
     v_lot_inventory_id uuid;
     v_lot_quantity numeric(24,8);
+    v_lot_unit_id uuid;
+    v_batch_output_unit_id uuid;
 BEGIN
-    SELECT status INTO v_batch_status
+    SELECT status, output_unit_id INTO v_batch_status, v_batch_output_unit_id
       FROM production_batches
      WHERE tenant_id=NEW.tenant_id AND id=NEW.batch_id;
     IF v_batch_status IS DISTINCT FROM 'sterilization' THEN
@@ -69,8 +73,9 @@ BEGIN
             USING ERRCODE='23514';
     END IF;
 
-    SELECT document_id, lot_id, base_quantity
-      INTO v_line_document_id, v_line_lot_id, v_line_base_quantity
+    SELECT document_id, lot_id, base_quantity, quantity, unit_id
+      INTO v_line_document_id, v_line_lot_id, v_line_base_quantity,
+           v_line_quantity, v_line_unit_id
       FROM inventory_document_lines
      WHERE tenant_id=NEW.tenant_id AND id=NEW.inventory_document_line_id;
     IF v_line_document_id IS DISTINCT FROM NEW.inventory_document_id THEN
@@ -78,13 +83,16 @@ BEGIN
             USING ERRCODE='23514';
     END IF;
 
-    SELECT batch_id, inventory_lot_id, output_quantity
-      INTO v_lot_batch_id, v_lot_inventory_id, v_lot_quantity
+    SELECT batch_id, inventory_lot_id, output_quantity, output_unit_id
+      INTO v_lot_batch_id, v_lot_inventory_id, v_lot_quantity, v_lot_unit_id
       FROM production_lots
      WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_id;
     IF v_lot_batch_id IS DISTINCT FROM NEW.batch_id
        OR v_lot_inventory_id IS DISTINCT FROM v_line_lot_id
-       OR v_lot_quantity IS DISTINCT FROM NEW.output_quantity THEN
+       OR v_lot_quantity IS DISTINCT FROM NEW.output_quantity
+       OR v_line_quantity IS DISTINCT FROM NEW.output_quantity
+       OR v_line_unit_id IS DISTINCT FROM v_batch_output_unit_id
+       OR v_lot_unit_id IS DISTINCT FROM v_batch_output_unit_id THEN
         RAISE EXCEPTION 'Production lot must match the posted batch output and inventory lot'
             USING ERRCODE='23514';
     END IF;

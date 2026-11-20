@@ -28,7 +28,7 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 - Every production loss records stage, reason, quantity and disposition. `press_baglog` is a supported loss stage after migration 0013. Recovery creates a new traceable lot and cost record; it never silently restores the source lot.
 - Migration 0013 adds immutable `production_press_outputs` records. Each press pass records processed, good and rejected quantities with the invariant `processed = good + rejected`; only good output is eligible for production-output posting. Migration 0014 strengthens the insert guard: the machine must be active, share the batch production unit, and use the batch output unit, using the tenant-scoped records visible to the runtime role.
 - Material cost comes from actual posted consumption entries. Finalized production cost snapshots freeze material cost, overhead (zero until later allocation), total, output quantity, unit cost and currency. Later overhead is a separate adjustment/allocation, not a rewrite.
-- `src/app/backend/services/production_lifecycle.py` implements guarded batch transitions, immutable events, per-batch idempotency and tenant audit writes. Migration 0015 adds event idempotency columns/index, append-only trigger and narrow runtime grants. Batch closure remains disabled until output/loss/recovery reconciliation is implemented.
+- `src/app/backend/services/production_lifecycle.py` implements guarded batch transitions, immutable events, per-batch idempotency and tenant audit writes. Migration 0015 adds event idempotency columns/index, append-only trigger and narrow runtime grants. User-confirmed validation on disposable PostgreSQL 18.7: migration 0015 applied, smoke test passed, lifecycle integration test passed with a runtime non-owner role (1 passed), and Ruff passed. Batch closure remains disabled until output/loss/recovery reconciliation is implemented.
 
 ## Application services and API
 
@@ -85,8 +85,8 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] Implement production material consumption validation and immutable batch cost links.
 - [x] Add grouped sterilization-cycle schema and immutable press output records with tenant constraints, forced RLS, indexes and schema smoke checks (migration 0013; execution pending).
 - [x] Strengthen press output validation for machine activity, production-unit consistency and output-unit consistency (migration 0014; user-confirmed PostgreSQL 18.7 disposable database execution passed).
-- [x] Add batch-event idempotency, immutable event history and restricted lifecycle update grants (migration 0015; PostgreSQL execution pending).
-- [x] Implement service-level guarded batch transitions, hold/resume and cancellation checks (M10.1.3; PostgreSQL integration validation pending).
+- [x] Add batch-event idempotency, immutable event history and restricted lifecycle update grants (migration 0015; user-confirmed PostgreSQL 18.7 execution and smoke test passed).
+- [x] Implement service-level guarded batch transitions, hold/resume and cancellation checks (M10.1.3; user-confirmed PostgreSQL 18.7 integration test passed with runtime non-owner role; Ruff passed).
 - [ ] Complete lifecycle transition coverage, API integration, sterilizer/kumbung capacity validation and output/loss/recovery posting orchestration.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 

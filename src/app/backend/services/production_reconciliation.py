@@ -454,15 +454,31 @@ def recover_production_loss(
         replay = session.execute(
             text(
                 """
-                SELECT id,recovered_inventory_lot_id,inventory_document_id,
-                       recovered_quantity,total_recovery_cost,currency,recovery_mode
-                  FROM production_recovery_lots
-                 WHERE tenant_id=:tenant_id AND loss_id=:loss_id
+                SELECT r.id,r.recovered_inventory_lot_id,r.inventory_document_id,
+                       r.recovered_quantity,r.total_recovery_cost,r.currency,r.recovery_mode,
+                       r.recovered_item_id,r.unit_id,r.original_cost_snapshot,
+                       r.recovery_cost_snapshot,d.destination_warehouse_id
+                  FROM production_recovery_lots r
+                  JOIN inventory_documents d
+                    ON d.tenant_id=r.tenant_id AND d.id=r.inventory_document_id
+                 WHERE r.tenant_id=:tenant_id AND r.loss_id=:loss_id
                 """
             ),
             {"tenant_id": str(tenant_id), "loss_id": str(loss_id)},
         ).mappings().one_or_none()
         if replay is not None and locked_loss["disposition"] in {"recovered","recycled"}:
+            if (
+                str(replay["recovery_mode"]) != recovery_mode
+                or Decimal(replay["original_cost_snapshot"]) != material_value_snapshot
+                or Decimal(replay["recovery_cost_snapshot"]) != recovery_cost_snapshot
+                or (recovered_item_id is not None and str(replay["recovered_item_id"]) != str(recovered_item_id))
+                or (recovered_quantity is not None and Decimal(replay["recovered_quantity"]) != recovered_quantity)
+                or (recovered_unit_id is not None and str(replay["unit_id"]) != str(recovered_unit_id))
+                or str(replay["destination_warehouse_id"]) != str(warehouse_id)
+            ):
+                raise ProductionReconciliationError(
+                    "This loss already has a recovery posting with a different payload."
+                )
             return ProductionRecoveryResult(
                 loss_id,UUID(str(replay["id"])),
                 UUID(str(replay["recovered_inventory_lot_id"])),

@@ -7,6 +7,8 @@ rollback. Inventory recovery is posted through the immutable inventory ledger.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4

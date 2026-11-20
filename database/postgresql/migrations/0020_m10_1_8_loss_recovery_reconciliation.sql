@@ -21,8 +21,7 @@ ALTER TABLE production_losses
             (stage='kumbung' AND production_lot_segment_id IS NOT NULL
                               AND source_kumbung_id IS NOT NULL)
             OR
-            (stage<>'kumbung' AND production_lot_segment_id IS NULL
-                               AND source_kumbung_id IS NULL)
+            (stage<>'kumbung' AND source_kumbung_id IS NULL)
         ) NOT VALID;
 
 CREATE UNIQUE INDEX uq_production_loss_idempotency
@@ -161,6 +160,8 @@ DECLARE
     v_segment_batch uuid;
     v_segment_lot uuid;
     v_segment_unit uuid;
+    v_segment_quantity numeric(24,8);
+    v_segment_existing numeric(24,8);
     v_kumbung_location uuid;
     v_batch_location uuid;
     v_batch_status varchar(30);
@@ -183,6 +184,10 @@ BEGIN
     END IF;
 
     IF NEW.stage='press_baglog' THEN
+        IF NEW.production_lot_segment_id IS NOT NULL THEN
+            RAISE EXCEPTION 'Press rejection occurs before variety-specific lot segmentation'
+                USING ERRCODE='23514';
+        END IF;
         SELECT COALESCE(sum(good_quantity*0 + rejected_quantity),0)
           INTO v_press_rejects
           FROM production_press_outputs
@@ -202,6 +207,10 @@ BEGIN
                 USING ERRCODE='23514';
         END IF;
     ELSIF NEW.stage='mixing' THEN
+        IF NEW.production_lot_segment_id IS NOT NULL THEN
+            RAISE EXCEPTION 'Mixing loss occurs before a variety-specific lot segment exists'
+                USING ERRCODE='23514';
+        END IF;
         SELECT COALESCE(sum(quantity),0) INTO v_existing
           FROM production_losses
          WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id AND stage='mixing';
@@ -271,6 +280,26 @@ BEGIN
         IF v_existing + NEW.quantity > v_lot_quantity THEN
             RAISE EXCEPTION 'Cumulative production losses exceed the source lot quantity'
                 USING ERRCODE='23514';
+        END IF;
+        IF NEW.production_lot_segment_id IS NOT NULL THEN
+            SELECT batch_id,production_lot_id,unit_id,quantity
+              INTO v_segment_batch,v_segment_lot,v_segment_unit,v_segment_quantity
+              FROM production_lot_segments
+             WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_segment_id;
+            IF v_segment_batch IS DISTINCT FROM NEW.batch_id
+               OR v_segment_lot IS DISTINCT FROM NEW.production_lot_id
+               OR v_segment_unit IS DISTINCT FROM NEW.unit_id THEN
+                RAISE EXCEPTION 'Stage loss segment must belong to the same batch, lot and unit'
+                    USING ERRCODE='23514';
+            END IF;
+            SELECT COALESCE(sum(quantity),0) INTO v_segment_existing
+              FROM production_losses
+             WHERE tenant_id=NEW.tenant_id
+               AND production_lot_segment_id=NEW.production_lot_segment_id;
+            IF v_segment_existing + NEW.quantity > v_segment_quantity THEN
+                RAISE EXCEPTION 'Stage losses exceed the available quantity in the variety segment'
+                    USING ERRCODE='23514';
+            END IF;
         END IF;
     ELSE
         RAISE EXCEPTION 'Harvest loss is not enabled until the harvest domain is implemented'
@@ -787,7 +816,6 @@ BEGIN
                SELECT sum(l.quantity) FROM production_losses l
                 WHERE l.tenant_id=NEW.tenant_id
                   AND l.production_lot_segment_id=NEW.production_lot_segment_id
-                  AND l.disposition IN ('recovered','recycled','permanent_loss','discarded')
            ),0)
       INTO v_segment_balance
       FROM kumbung_placements p

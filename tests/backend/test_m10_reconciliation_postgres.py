@@ -214,7 +214,7 @@ def test_production_loss_idempotency_and_immutable_event_history():
                         unit_cost_snapshot,currency,line_value_snapshot
                     ) VALUES (
                         :id,:tenant_id,:document_id,1,:item_id,:lot_id,
-                        :item_code,'Loss fixture item',1,:unit_id,'Baglog',1,1,20,'IDR',20
+                        :item_code,'Loss fixture item',1,:unit_id,'Baglog',1,1,1600,'IDR',1600
                     )
                     """
                 ),
@@ -246,7 +246,7 @@ def test_production_loss_idempotency_and_immutable_event_history():
                         quantity_delta,value_delta,currency,unit_cost_snapshot,occurred_at
                     ) VALUES (
                         :tenant_id,:document_id,:line_id,:warehouse_id,:item_id,:lot_id,
-                        -1,-20,'IDR',20,now()
+                        -1,-1600,'IDR',1600,now()
                     )
                     """
                 ),
@@ -263,7 +263,7 @@ def test_production_loss_idempotency_and_immutable_event_history():
                         tenant_id,batch_id,inventory_document_line_id,item_id,
                         consumed_base_quantity,material_cost_snapshot,currency,consumed_at
                     ) VALUES (
-                        :tenant_id,:batch_id,:line_id,:item_id,1,20,'IDR',now()
+                        :tenant_id,:batch_id,:line_id,:item_id,1,1600,'IDR',now()
                     )
                     """
                 ),
@@ -473,8 +473,8 @@ def test_production_loss_idempotency_and_immutable_event_history():
             assert finalized.output_quantity == Decimal("100")
             assert finalized.placed_quantity == Decimal("0")
             assert finalized.loss_quantity == Decimal("100")
-            assert finalized.total_cost == Decimal("7")
-            assert finalized.gross_cost == Decimal("20")
+            assert finalized.total_cost == Decimal("1587")
+            assert finalized.gross_cost == Decimal("1600")
             assert finalized.recovery_credit == Decimal("13")
             assert finalized.transition.to_status == "closed"
             session.commit()

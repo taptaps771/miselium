@@ -95,6 +95,7 @@ DECLARE
     v_lot_quantity numeric(24,8);
     v_existing numeric(24,8);
     v_press_rejects numeric(24,8);
+    v_press_lot_batch uuid;
     v_segment_batch uuid;
     v_segment_lot uuid;
     v_segment_unit uuid;
@@ -126,8 +127,11 @@ BEGIN
             RAISE EXCEPTION 'Press rejection loss exceeds immutable rejected press output'
                 USING ERRCODE='23514';
         END IF;
-        IF NEW.production_lot_id IS NULL THEN
-            RAISE EXCEPTION 'Press rejection loss must reference the posted production lot'
+        SELECT batch_id INTO v_press_lot_batch
+          FROM production_lots
+         WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_id;
+        IF v_press_lot_batch IS DISTINCT FROM NEW.batch_id THEN
+            RAISE EXCEPTION 'Press rejection loss must reference the posted lot from the same batch'
                 USING ERRCODE='23514';
         END IF;
     ELSIF NEW.stage='mixing' THEN

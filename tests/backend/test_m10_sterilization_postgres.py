@@ -9,6 +9,13 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+from app.backend.services.inoculation import (
+    VarietyAllocation,
+    complete_inoculation_run,
+    create_incubation_record,
+    schedule_inoculation_run,
+)
+from app.backend.services.production_lifecycle import transition_production_batch
 from app.backend.services.sterilization import (
     BatchSterilizationAllocation,
     SterilizationError,
@@ -32,7 +39,7 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
     admin_url, runtime_url = _urls()
     tenant_id, actor_id = uuid4(), uuid4()
     location_id, production_unit_id, unit_id = uuid4(), uuid4(), uuid4()
-    item_id, recipe_id, recipe_version_id, batch_id = (uuid4() for _ in range(4))
+    item_id, recipe_id, recipe_version_id, batch_id, variety_id = (uuid4() for _ in range(5))
     machine_a, machine_b = uuid4(), uuid4()
     admin_engine = create_engine(admin_url)
     runtime_engine = create_engine(runtime_url)
@@ -94,6 +101,18 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
                 {
                     "id": production_unit_id, "tenant_id": tenant_id,
                     "location_id": location_id, "code": f"SU-{tenant_id.hex[:8]}",
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO mushroom_varieties(id, tenant_id, code, name, is_active)
+                    VALUES (:id, :tenant_id, :code, 'Jamur Tiram Putih', true)
+                    """
+                ),
+                {
+                    "id": variety_id, "tenant_id": tenant_id,
+                    "code": f"TV-{tenant_id.hex[:8]}",
                 },
             )
             connection.execute(
@@ -236,6 +255,50 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
             assert cooled.status == "cooling_completed"
             session.commit()
 
+            transition_production_batch(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                batch_id=batch_id, command="start_inoculation",
+                idempotency_key=f"start-inoculation-{batch_id.hex}",
+            )
+            session.commit()
+
+            inoculation = schedule_inoculation_run(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                production_unit_id=production_unit_id,
+                run_code=f"INOC-{tenant_id.hex[:10]}",
+                allocations=(
+                    VarietyAllocation(
+                        batch_id=batch_id, variety_id=variety_id,
+                        quantity=Decimal("850"), unit_id=unit_id,
+                    ),
+                ),
+            )
+            assert inoculation.allocation_count == 1
+            session.commit()
+
+            completed_inoculation = complete_inoculation_run(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                run_id=inoculation.run_id,
+            )
+            assert completed_inoculation.allocation_count == 1
+            session.commit()
+
+            incubation = create_incubation_record(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                batch_id=batch_id, incubation_location_id=location_id,
+                target_days=32,
+            )
+            assert incubation.target_days == 32
+            assert incubation.expected_move_at - incubation.started_at == timedelta(days=32)
+            session.commit()
+
+            transition_production_batch(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                batch_id=batch_id, command="complete_inoculation",
+                idempotency_key=f"complete-inoculation-{batch_id.hex}",
+            )
+            session.commit()
+
             session.execute(
                 text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
                 {"tenant_id": str(tenant_id)},
@@ -267,6 +330,30 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
             assert int(result["run_count"]) == 2
             assert Decimal(result["allocated_quantity"]) == Decimal("900")
             assert int(result["event_count"]) == 6
+            inoculation_state = session.execute(
+                text(
+                    """
+                    SELECT b.status, r.status AS run_status, ir.target_days,
+                           ir.expected_move_at, count(a.id) AS allocation_count,
+                           sum(a.allocated_quantity) AS allocated_quantity
+                      FROM production_batches b
+                      JOIN inoculation_allocations a
+                        ON a.tenant_id=b.tenant_id AND a.batch_id=b.id
+                      JOIN inoculation_runs r
+                        ON r.tenant_id=a.tenant_id AND r.id=a.inoculation_run_id
+                      JOIN incubation_records ir
+                        ON ir.tenant_id=b.tenant_id AND ir.batch_id=b.id
+                     WHERE b.tenant_id=:tenant_id AND b.id=:batch_id
+                     GROUP BY b.status, r.status, ir.target_days, ir.expected_move_at
+                    """
+                ),
+                {"tenant_id": str(tenant_id), "batch_id": batch_id},
+            ).mappings().one()
+            assert inoculation_state["status"] == "incubation"
+            assert inoculation_state["run_status"] == "completed"
+            assert int(inoculation_state["target_days"]) == 32
+            assert int(inoculation_state["allocation_count"]) == 1
+            assert Decimal(inoculation_state["allocated_quantity"]) == Decimal("850")
 
     finally:
         runtime_engine.dispose()

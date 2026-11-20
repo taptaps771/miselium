@@ -126,6 +126,7 @@ DECLARE
     v_conversion numeric(24,12);
     v_segment_balance numeric(24,8);
     v_occupied numeric(24,8);
+    v_unconvertible bigint;
 BEGIN
     IF NEW.production_lot_segment_id IS NULL THEN
         RAISE EXCEPTION 'New kumbung placements must reference a variety-specific production lot segment'
@@ -183,7 +184,22 @@ BEGIN
         RAISE EXCEPTION 'Placement would overdraw the available variety lot segment'
             USING ERRCODE='23514';
     END IF;
-    SELECT COALESCE(sum(p.quantity_delta * COALESCE(c.factor,1)),0)
+    SELECT count(*) INTO v_unconvertible
+      FROM kumbung_placements p
+     WHERE p.tenant_id=NEW.tenant_id AND p.kumbung_id=NEW.kumbung_id
+       AND p.unit_id <> v_kumbung_capacity_unit
+       AND NOT EXISTS (
+           SELECT 1 FROM measurement_unit_conversions c
+            WHERE c.from_unit_id=p.unit_id AND c.to_unit_id=v_kumbung_capacity_unit
+       );
+    IF v_unconvertible > 0 THEN
+        RAISE EXCEPTION 'Existing kumbung occupancy contains a unit without an explicit capacity conversion'
+            USING ERRCODE='23514';
+    END IF;
+    SELECT COALESCE(sum(
+               p.quantity_delta * CASE WHEN p.unit_id=v_kumbung_capacity_unit
+                                       THEN 1 ELSE c.factor END
+           ),0)
       INTO v_occupied
       FROM kumbung_placements p
       LEFT JOIN measurement_unit_conversions c

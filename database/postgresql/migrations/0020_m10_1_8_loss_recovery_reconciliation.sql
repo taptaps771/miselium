@@ -344,6 +344,7 @@ DECLARE
     v_batch_material_cost numeric(24,8);
     v_batch_overhead_cost numeric(24,8);
     v_material_count bigint;
+    v_material_currencies bigint;
     v_material_currency char(3);
     v_overhead_currencies bigint;
     v_overhead_currency char(3);
@@ -386,8 +387,9 @@ BEGIN
     SELECT COALESCE(sum(output_quantity),0) INTO v_batch_output
       FROM production_lots
      WHERE tenant_id=NEW.tenant_id AND batch_id=v_loss_batch;
-    SELECT count(*),COALESCE(sum(material_cost_snapshot),0),min(currency)
-      INTO v_material_count,v_batch_material_cost,v_material_currency
+    SELECT count(*),COALESCE(sum(material_cost_snapshot),0),
+           count(DISTINCT currency),min(currency)
+      INTO v_material_count,v_batch_material_cost,v_material_currencies,v_material_currency
       FROM production_batch_consumptions
      WHERE tenant_id=NEW.tenant_id AND batch_id=v_loss_batch;
     SELECT COALESCE(sum(total_cost),0),count(DISTINCT currency),min(currency)
@@ -396,10 +398,11 @@ BEGIN
      WHERE tenant_id=NEW.tenant_id AND batch_id=v_loss_batch;
     SELECT default_currency INTO v_tenant_currency
       FROM tenants WHERE id=NEW.tenant_id;
-    IF v_batch_output <= 0 OR v_material_count=0
+    IF v_batch_output <= 0 OR v_material_count=0 OR v_material_currencies <> 1
        OR v_material_currency <> v_tenant_currency
        OR v_overhead_currencies > 1
        OR (v_overhead_currencies=1 AND v_overhead_currency <> v_tenant_currency)
+       OR NEW.currency <> v_tenant_currency
        OR NEW.original_cost_snapshot >
           ((v_batch_material_cost + v_batch_overhead_cost) / v_batch_output) * v_loss_quantity THEN
         RAISE EXCEPTION 'Salvage value cannot exceed the source lot share of its historical posted production cost'

@@ -351,6 +351,14 @@ def test_production_loss_idempotency_and_immutable_event_history():
             )
             assert replayed_recovery.recovery_lot_id == recovered.recovery_lot_id
             session.commit()
+            with pytest.raises(ProductionReconciliationError):
+                recover_production_loss(
+                    session, actor_user_id=actor_id, tenant_id=tenant_id,
+                    loss_id=recoverable.loss_id, warehouse_id=warehouse_id,
+                    material_value_snapshot=Decimal("9"),
+                    recovery_cost_snapshot=Decimal("4"),
+                )
+            session.rollback()
 
             session.execute(
                 text("SELECT set_config('app.tenant_id',:tenant_id,true)"),

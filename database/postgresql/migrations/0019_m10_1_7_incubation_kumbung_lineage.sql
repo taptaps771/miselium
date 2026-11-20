@@ -123,6 +123,7 @@ DECLARE
     v_kumbung_capacity_unit uuid;
     v_kumbung_active boolean;
     v_batch_location uuid;
+    v_batch_status varchar(30);
     v_conversion numeric(24,12);
     v_segment_balance numeric(24,8);
     v_occupied numeric(24,8);
@@ -138,8 +139,8 @@ BEGIN
     PERFORM pg_advisory_xact_lock(
         hashtextextended(NEW.tenant_id::text || ':lot-segment:' || NEW.production_lot_segment_id::text,0)
     );
-    SELECT s.batch_id,s.production_lot_id,s.unit_id,s.quantity,b.location_id
-      INTO v_segment_batch,v_segment_lot,v_segment_unit,v_segment_quantity,v_batch_location
+    SELECT s.batch_id,s.production_lot_id,s.unit_id,s.quantity,b.location_id,b.status
+      INTO v_segment_batch,v_segment_lot,v_segment_unit,v_segment_quantity,v_batch_location,v_batch_status
       FROM production_lot_segments s
       JOIN production_batches b
         ON b.tenant_id=s.tenant_id AND b.id=s.batch_id
@@ -150,8 +151,9 @@ BEGIN
      WHERE tenant_id=NEW.tenant_id AND id=NEW.kumbung_id;
     IF v_segment_batch IS NULL OR v_kumbung_location IS NULL
        OR v_kumbung_active IS DISTINCT FROM true
-       OR v_batch_location <> v_kumbung_location THEN
-        RAISE EXCEPTION 'Placement requires an active kumbung at the batch location and a tenant-owned lot segment'
+       OR v_batch_location <> v_kumbung_location
+       OR v_batch_status <> 'ready' THEN
+        RAISE EXCEPTION 'Placement requires a ready batch and an active kumbung at its location'
             USING ERRCODE='23514';
     END IF;
     IF NEW.unit_id <> v_segment_unit OR v_kumbung_capacity_unit IS NULL THEN

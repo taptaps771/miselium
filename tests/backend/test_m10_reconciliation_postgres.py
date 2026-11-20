@@ -29,6 +29,7 @@ def test_production_loss_idempotency_and_immutable_event_history():
     admin_url, runtime_url = _urls()
     tenant_id, actor_id = uuid4(), uuid4()
     location_id, production_unit_id, unit_id = uuid4(), uuid4(), uuid4()
+    kg_unit_id, recovery_item_id = uuid4(), uuid4()
     item_id, recipe_id, recipe_version_id, batch_id = (uuid4() for _ in range(4))
     inventory_lot_id, production_lot_id, warehouse_id = uuid4(), uuid4(), uuid4()
     consumption_document_id, consumption_line_id = uuid4(), uuid4()
@@ -68,6 +69,13 @@ def test_production_loss_idempotency_and_immutable_event_history():
             )
             connection.execute(
                 text(
+                    "INSERT INTO measurement_units(id,code,name,dimension) "
+                    "VALUES (:id,:code,'Kilogram','mass')"
+                ),
+                {"id": kg_unit_id, "code": f"loss-kg-{kg_unit_id.hex[:14]}"},
+            )
+            connection.execute(
+                text(
                     "INSERT INTO locations(id,tenant_id,code,name) "
                     "VALUES (:id,:tenant_id,:code,'Loss location')"
                 ),
@@ -95,6 +103,18 @@ def test_production_loss_idempotency_and_immutable_event_history():
                 {
                     "id": item_id, "tenant_id": tenant_id,
                     "code": f"LOSS-ITEM-{tenant_id.hex[:8]}", "unit_id": unit_id,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO inventory_items(id,tenant_id,code,name,item_type,base_unit_id)
+                    VALUES (:id,:tenant_id,:code,'Recovered media','raw_material',:unit_id)
+                    """
+                ),
+                {
+                    "id": recovery_item_id, "tenant_id": tenant_id,
+                    "code": f"REC-MEDIA-{tenant_id.hex[:8]}", "unit_id": kg_unit_id,
                 },
             )
             connection.execute(
@@ -341,17 +361,17 @@ def test_production_loss_idempotency_and_immutable_event_history():
                     """
                     SELECT loss_id,count(*) AS events
                       FROM production_loss_events
-                     WHERE tenant_id=:tenant_id AND loss_id IN (:loss_a,:loss_b)
+                     WHERE tenant_id=:tenant_id AND loss_id IN (:loss_a,:loss_b,:loss_c)
                      GROUP BY loss_id
                     """
                 ),
                 {
                     "tenant_id": str(tenant_id), "loss_a": str(first.loss_id),
-                    "loss_b": str(recoverable.loss_id),
+                    "loss_b": str(recoverable.loss_id), "loss_c": str(recycled_loss.loss_id),
                 },
             ).mappings().all()
             assert {str(row["loss_id"]): int(row["events"]) for row in event_counts} == {
-                str(first.loss_id): 2, str(recoverable.loss_id): 3,
+                str(first.loss_id): 2, str(recoverable.loss_id): 3, str(recycled_loss.loss_id): 3,
             }
             recovery_ledger = session.execute(
                 text(
@@ -373,11 +393,56 @@ def test_production_loss_idempotency_and_immutable_event_history():
             assert Decimal(recovery_ledger["quantity_delta"]) == Decimal("5")
             assert Decimal(recovery_ledger["value_delta"]) == Decimal("12")
             assert recovery_ledger["disposition"] == "recovered"
+            recycled_ledger = session.execute(
+                text(
+                    """
+                    SELECT le.quantity_delta,le.value_delta,rr.disposition,
+                           r.loss_quantity_snapshot,r.recovered_quantity,r.recovery_mode
+                      FROM production_recovery_lots r
+                      JOIN inventory_ledger_entries le
+                        ON le.tenant_id=r.tenant_id AND le.document_id=r.inventory_document_id
+                      JOIN production_losses rr
+                        ON rr.tenant_id=r.tenant_id AND rr.id=r.loss_id
+                     WHERE r.tenant_id=:tenant_id AND r.loss_id=:loss_id
+                    """
+                ),
+                {"tenant_id": str(tenant_id), "loss_id": str(recycled_loss.loss_id)},
+            ).mappings().one()
+            assert Decimal(recycled_ledger["quantity_delta"]) == Decimal("1.5")
+            assert Decimal(recycled_ledger["value_delta"]) == Decimal("7")
+            assert Decimal(recycled_ledger["loss_quantity_snapshot"]) == Decimal("5")
+            assert Decimal(recycled_ledger["recovered_quantity"]) == Decimal("1.5")
+            assert recycled_ledger["recovery_mode"] == "recycle_to_mixing"
+            assert recycled_ledger["disposition"] == "recycled"
+
+            recycled_loss = record_production_loss(
+                session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,
+                stage="inoculation", idempotency_key=f"recycled-loss-{batch_id.hex}",
+                reason_code="damaged_packaging", quantity=Decimal("5"), unit_id=unit_id,
+                recoverable=True, production_lot_id=production_lot_id,
+                notes="Media recovered for reuse in mixing",
+            )
+            session.commit()
+            recycled = recover_production_loss(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                loss_id=recycled_loss.loss_id, warehouse_id=warehouse_id,
+                material_value_snapshot=Decimal("5"),
+                recovery_cost_snapshot=Decimal("2"),
+                recovery_mode="recycle_to_mixing",
+                recovered_item_id=recovery_item_id,
+                recovered_quantity=Decimal("1.5"),
+                recovered_unit_id=kg_unit_id,
+                notes="Measured reusable media",
+            )
+            assert recycled.quantity == Decimal("1.5")
+            assert recycled.total_cost == Decimal("7")
+            assert recycled.disposition == "recycled"
+            session.commit()
 
             terminal_loss = record_production_loss(
                 session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,
                 stage="inoculation", idempotency_key=f"inoculation-loss-{batch_id.hex}",
-                reason_code="contamination", quantity=Decimal("95"), unit_id=unit_id,
+                reason_code="contamination", quantity=Decimal("90"), unit_id=unit_id,
                 disposition="permanent_loss", production_lot_id=production_lot_id,
                 notes="Remaining output permanently lost during inoculation",
             )

@@ -343,6 +343,11 @@ def transition_production_batch(
     request_hash = _request_hash(command, normalized_notes)
     _set_context(session, actor_user_id, tenant_id)
     _require_production_module(session, tenant_id)
+    # Coordinate lifecycle transitions with sterilization allocation services.
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"{tenant_id}:production-batch:{batch_id}"},
+    )
 
     try:
         batch = session.execute(

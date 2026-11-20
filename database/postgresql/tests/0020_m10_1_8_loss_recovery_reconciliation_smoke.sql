@@ -59,6 +59,22 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='production_recovery_lots'
+           AND column_name='loss_quantity_snapshot'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='production_recovery_lots'
+           AND column_name='recovery_mode'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='production_recovery_lots'
+           AND column_name='recovered_item_id'
+    ) THEN
+        RAISE EXCEPTION 'M10.1.8 must preserve both original loss and recovered stock quantity/item';
+    END IF;
+
+    IF NOT EXISTS (
         SELECT 1 FROM pg_indexes
          WHERE schemaname='public'
            AND indexname='uq_production_loss_idempotency'

@@ -12,6 +12,7 @@ from app.backend.services.production_reconciliation import (
     ProductionReconciliationError,
     record_production_loss,
     recover_production_loss,
+    set_production_loss_disposition,
 )
 
 
@@ -201,6 +202,19 @@ def test_production_loss_idempotency_and_immutable_event_history():
                     disposition="permanent_loss", notes="Different payload",
                 )
             session.rollback()
+
+            pending = record_production_loss(
+                session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,
+                stage="mixing", idempotency_key=f"pending-loss-{batch_id.hex}",
+                reason_code="spillage", quantity=Decimal("2"), unit_id=unit_id,
+            )
+            session.commit()
+            resolved = set_production_loss_disposition(
+                session, actor_user_id=actor_id, tenant_id=tenant_id,
+                loss_id=pending.loss_id, disposition="discarded",
+            )
+            assert resolved.disposition == "discarded"
+            session.commit()
 
             recoverable = record_production_loss(
                 session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,

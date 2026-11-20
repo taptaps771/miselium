@@ -314,9 +314,23 @@ def _guard_transition(
         return "cancelled", metadata
 
     if command == "reconcile_and_close":
-        raise ProductionLifecycleError(
-            "Batch closure is reserved for the M10.1.8 reconciliation workflow."
+        if current_status != "ready":
+            raise ProductionLifecycleError("Only a ready batch can be reconciled and closed.")
+        has_reconciliation = _exists(
+            session,
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM production_batch_reconciliations
+                 WHERE tenant_id=:tenant_id AND batch_id=:batch_id
+            )
+            """,
+            {"tenant_id": str(tenant_id), "batch_id": str(batch_id)},
         )
+        if not has_reconciliation:
+            raise ProductionLifecycleError(
+                "Batch closure requires a completed M10.1.8 output/loss/recovery reconciliation."
+            )
+        return "closed", metadata
     raise ProductionLifecycleError("Unsupported production batch command.")
 
 

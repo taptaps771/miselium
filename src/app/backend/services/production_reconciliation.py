@@ -755,7 +755,7 @@ def reconcile_and_close_batch(
         loss_state = session.execute(
             text(
                 """
-                SELECT COALESCE(sum(quantity),0) AS loss_quantity,
+                SELECT COALESCE(sum(quantity) FILTER (WHERE stage <> 'mixing'),0) AS loss_quantity,
                        count(*) FILTER (WHERE disposition='pending') AS pending_count,
                        count(*) FILTER (
                            WHERE disposition IN ('recovered','recycled')

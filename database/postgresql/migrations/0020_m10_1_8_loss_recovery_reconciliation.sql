@@ -408,7 +408,10 @@ BEGIN
     ) VALUES (
         NEW.tenant_id,NEW.loss_id,'loss_recovery_posted',NEW.recovered_by,
         jsonb_build_object('recovery_lot_id',NEW.id,
+                           'loss_quantity',NEW.loss_quantity_snapshot,
                            'recovered_quantity',NEW.recovered_quantity,
+                           'recovery_mode',NEW.recovery_mode,
+                           'recovered_item_id',NEW.recovered_item_id,
                            'total_recovery_cost',NEW.total_recovery_cost,
                            'currency',NEW.currency)
     );

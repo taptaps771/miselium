@@ -339,6 +339,15 @@ RETURNS trigger LANGUAGE plpgsql AS $m1018$
 DECLARE
     v_loss_quantity numeric(24,8);
     v_loss_unit uuid;
+    v_loss_batch uuid;
+    v_batch_output numeric(24,8);
+    v_batch_material_cost numeric(24,8);
+    v_batch_overhead_cost numeric(24,8);
+    v_material_count bigint;
+    v_material_currency char(3);
+    v_overhead_currencies bigint;
+    v_overhead_currency char(3);
+    v_tenant_currency char(3);
     v_loss_recoverable boolean;
     v_loss_disposition varchar(30);
     v_source_item uuid;
@@ -358,8 +367,8 @@ DECLARE
     v_ledger_value numeric(24,8);
     v_ledger_currency char(3);
 BEGIN
-    SELECT l.quantity,l.unit_id,l.recoverable,l.disposition,src_lot.item_id
-      INTO v_loss_quantity,v_loss_unit,v_loss_recoverable,v_loss_disposition,v_source_item
+    SELECT l.quantity,l.unit_id,l.recoverable,l.disposition,src_lot.item_id,l.batch_id
+      INTO v_loss_quantity,v_loss_unit,v_loss_recoverable,v_loss_disposition,v_source_item,v_loss_batch
       FROM production_losses l
       LEFT JOIN production_lots pl
         ON pl.tenant_id=l.tenant_id AND pl.id=l.production_lot_id
@@ -372,6 +381,28 @@ BEGIN
        OR NEW.loss_quantity_snapshot <> v_loss_quantity
        OR NEW.loss_unit_id_snapshot <> v_loss_unit THEN
         RAISE EXCEPTION 'Recovery requires a full, recoverable, pending source loss snapshot'
+            USING ERRCODE='23514';
+    END IF;
+    SELECT COALESCE(sum(output_quantity),0) INTO v_batch_output
+      FROM production_lots
+     WHERE tenant_id=NEW.tenant_id AND batch_id=v_loss_batch;
+    SELECT count(*),COALESCE(sum(material_cost_snapshot),0),min(currency)
+      INTO v_material_count,v_batch_material_cost,v_material_currency
+      FROM production_batch_consumptions
+     WHERE tenant_id=NEW.tenant_id AND batch_id=v_loss_batch;
+    SELECT COALESCE(sum(total_cost),0),count(DISTINCT currency),min(currency)
+      INTO v_batch_overhead_cost,v_overhead_currencies,v_overhead_currency
+      FROM production_machine_cost_allocations
+     WHERE tenant_id=NEW.tenant_id AND batch_id=v_loss_batch;
+    SELECT default_currency INTO v_tenant_currency
+      FROM tenants WHERE id=NEW.tenant_id;
+    IF v_batch_output <= 0 OR v_material_count=0
+       OR v_material_currency <> v_tenant_currency
+       OR v_overhead_currencies > 1
+       OR (v_overhead_currencies=1 AND v_overhead_currency <> v_tenant_currency)
+       OR NEW.original_cost_snapshot >
+          ((v_batch_material_cost + v_batch_overhead_cost) / v_batch_output) * v_loss_quantity THEN
+        RAISE EXCEPTION 'Salvage value cannot exceed the source lot share of its historical posted production cost'
             USING ERRCODE='23514';
     END IF;
     SELECT item_type,is_active INTO v_recovered_item_type,v_recovered_item_active

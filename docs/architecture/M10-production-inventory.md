@@ -21,18 +21,20 @@ M10 establishes tenant-owned inventory and production: item/category/unit master
 
 - Recipes are reusable headers; each recipe version is a distinct, immutable formula once used by a batch.
 - A batch pins one recipe version, location and production unit. Its lifecycle is validated by domain services and audited in `production_batch_events`; clients cannot freely set statuses.
-- Sterilizer capacity and cycle/cooling durations are configurable. A run can combine multiple batches; service validation sums allocations in the sterilizer's capacity unit under transaction locks.
+- Sterilizer capacity and cycle/cooling durations are configurable. Migration 0013 adds `sterilization_cycles` to group machine-specific runs into one shared turn; each run can still contain multiple batch allocations. Service validation must sum allocations across every run in the cycle, convert to a common unit, and lock the cycle and participating machines.
 - Inoculation records variety allocations and optional seed-lot traceability.
 - Incubation duration is configurable per record. Do not hardcode 30 days.
 - Production lots connect outputs to batches and varieties. Kumbung placement is a signed event ledger; capacity and available quantities are checked transactionally.
-- Every production loss records stage, reason, quantity and disposition. Recovery creates a new traceable lot and cost record; it never silently restores the source lot.
+- Every production loss records stage, reason, quantity and disposition. `press_baglog` is a supported loss stage after migration 0013. Recovery creates a new traceable lot and cost record; it never silently restores the source lot.
+- Migration 0013 adds immutable `production_press_outputs` records. Each press pass records processed, good and rejected quantities with the invariant `processed = good + rejected`; only good output is eligible for production-output posting. Migration 0014 strengthens the insert guard: the machine must be active, share the batch production unit, and use the batch output unit, using the tenant-scoped records visible to the runtime role.
 - Material cost comes from actual posted consumption entries. Finalized production cost snapshots freeze material cost, overhead (zero until later allocation), total, output quantity, unit cost and currency. Later overhead is a separate adjustment/allocation, not a rewrite.
+- `src/app/backend/services/production_lifecycle.py` implements guarded batch transitions, immutable events, per-batch idempotency and tenant audit writes. Migration 0015 adds event idempotency columns/index, append-only trigger and narrow runtime grants. User-confirmed validation on disposable PostgreSQL 18.7: migration 0015 applied, smoke test passed, lifecycle integration test passed with a runtime non-owner role (1 passed), and Ruff passed. Migration 0016 and `src/app/backend/services/production_output.py` add atomic press-output posting, immutable batch-to-inventory posting linkage, generated inventory/production lots, ledger valuation from actual material cost, and press-reject loss capture. User confirmed migration 0016 and smoke test passed on PostgreSQL 18.7; runtime non-owner integration test passed (1 passed) after fixture and warehouse-lock fixes; Ruff passed. Migration 0017 and `src/app/backend/services/sterilization.py` now add shared multi-machine scheduling, explicit capacity-unit conversion snapshots, per-machine and combined capacity checks, batch output allocation bounds, overlapping machine schedule rejection, immutable cycle events, run lifecycle commands and cooling readiness. M10.1.5 validation is pending. Batch closure remains disabled until output/loss/recovery reconciliation is implemented.
 
 ## Application services and API
 
 Migration `0011_m10_inventory_application_services.sql` seeds the `inventory` and `production` module catalog, adds the M10 tenant permission vocabulary and restricted runtime grants. Existing owner/admin roles receive inventory and production management permissions; custom roles must be granted only permissions held by their administrator. Module activation remains a Platform Admin operation: the services reject work unless the tenant has an enabled `tenant_modules` entitlement for the relevant module.
 
-The PostgreSQL-backed service module is `clients/cross-platform/src/app/backend/services/inventory.py`:
+The PostgreSQL-backed service module is `src/app/backend/services/inventory.py`:
 
 - `post_inventory_document` validates the document type, warehouse direction, line/lot consistency and stock policy; locks the document and each affected stock key; calculates outbound moving-average value; updates draft snapshots; posts the document; appends ledger rows; and writes an audit event in one caller-owned transaction.
 - `transfer` posting writes equal and opposite quantity/value movements for the source and destination warehouses under the same locks.
@@ -81,7 +83,12 @@ The legacy `db.sql` is a SQLite discovery/migration source, not a PostgreSQL mig
 - [x] Apply M9 + M10 migrations and run the expanded smoke/invariant test on PostgreSQL 16 using a non-owner, non-superuser runtime role (GitHub Actions run #4: success).
 - [x] Implement atomic posting, transaction-scoped stock locks, transfer and exact ledger reversal services.
 - [x] Implement production material consumption validation and immutable batch cost links.
-- [ ] Implement production lifecycle transitions, sterilizer/kumbung capacity validation and output/loss/recovery posting orchestration.
+- [x] Add grouped sterilization-cycle schema and immutable press output records with tenant constraints, forced RLS, indexes and schema smoke checks (migration 0013; execution pending).
+- [x] Strengthen press output validation for machine activity, production-unit consistency and output-unit consistency (migration 0014; user-confirmed PostgreSQL 18.7 disposable database execution passed).
+- [x] Add batch-event idempotency, immutable event history and restricted lifecycle update grants (migration 0015; user-confirmed PostgreSQL 18.7 execution and smoke test passed).
+- [x] Implement service-level guarded batch transitions, hold/resume and cancellation checks (M10.1.3; user-confirmed PostgreSQL 18.7 integration test passed with runtime non-owner role; Ruff passed).
+- [x] Validate migration 0016, its smoke test, and `tests/backend/test_m10_production_output_postgres.py` on disposable PostgreSQL 18.7 with a runtime non-owner role; Ruff passed (user-confirmed).\n- [ ] Validate migration 0017, its smoke test, and `tests/backend/test_m10_sterilization_postgres.py` on disposable PostgreSQL 18.7 with a runtime non-owner role; run Ruff.
+- [ ] Complete lifecycle transition coverage, API integration, sterilizer/kumbung capacity validation and remaining loss/recovery reconciliation.
 - [ ] Complete row-level legacy mapping and stock/cost reconciliation before import.
 
 The remaining production lifecycle orchestration (sterilization, inoculation, incubation, kumbung capacity, output/loss/recovery) and legacy stock/cost reconciliation still require implementation and data-specific verification. A schema commit alone does not prove those behaviors.
@@ -89,18 +96,22 @@ The remaining production lifecycle orchestration (sterilization, inoculation, in
 ## Apply
 
 Run M9 migrations 0001 and 0003–0010 in their documented order, with M10 schema
-migration 0002 applied after 0001. Create the restricted runtime role before
-applying migration 0011:
+migration 0002 applied after 0001. Apply 0011, 0012, 0013, 0014, 0015, 0016 and 0017 in order:
 
 ```sql
 CREATE ROLE miselium_app LOGIN NOSUPERUSER NOBYPASSRLS;
 GRANT USAGE ON SCHEMA public TO miselium_app;
 ```
 
-Then apply:
+Apply the application-service and lifecycle migrations:
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m10_inventory_application_services.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0012_modular_settings_and_machines.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0013_m10_1_2_production_stage_records.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0014_m10_1_2_1_press_output_integrity.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0015_m10_1_3_production_batch_transitions.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0016_m10_1_4_atomic_production_output.sql\npsql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0017_m10_1_5_sterilization_scheduling.sql
 ```
 
 Run the smoke test on a disposable database as an administrator with a pre-created non-owner, non-superuser `miselium_app` role:
@@ -111,10 +122,14 @@ GRANT USAGE ON SCHEMA public TO miselium_app;
 GRANT SELECT, INSERT ON inventory_items TO miselium_app;
 ```
 
-Then execute:
+Then execute both smoke checks:
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0013_m10_1_2_production_stage_records_smoke.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0014_m10_1_2_1_press_output_integrity_smoke.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0015_m10_1_3_production_batch_transitions_smoke.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0016_m10_1_4_atomic_production_output_smoke.sql\npsql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0017_m10_1_5_sterilization_scheduling_smoke.sql
 ```
 
 The smoke test checks draft-ledger rejection, posting, posted-line immutability, append-only ledger behavior, tenant-scoped reads and cross-tenant write rejection. Do not test RLS as a superuser, table owner or BYPASSRLS role. The script rolls back its fixtures.

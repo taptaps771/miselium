@@ -163,6 +163,10 @@ def record_production_loss(
         )
     if stage == "mixing" and production_lot_id is not None:
         raise ProductionReconciliationError("Mixing loss must be recorded before a production lot exists.")
+    if stage == "mixing" and recoverable:
+        raise ProductionReconciliationError(
+            "M10.1.8 recovery applies to a traceable finished production lot, not pre-output mixing loss."
+        )
     if stage not in {"mixing"} and production_lot_id is None:
         raise ProductionReconciliationError("This loss stage requires a source production lot.")
     timestamp = occurred_at or datetime.now(UTC)

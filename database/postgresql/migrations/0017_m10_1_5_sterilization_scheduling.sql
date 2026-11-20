@@ -305,14 +305,19 @@ BEGIN
     PERFORM pg_advisory_xact_lock(
         hashtextextended(NEW.tenant_id::text || ':sterilizer:' || NEW.sterilizer_id::text, 0)
     );
-    IF EXISTS (
+    IF NEW.status IN ('planned','running') AND EXISTS (
         SELECT 1 FROM sterilization_runs other
          WHERE other.tenant_id=NEW.tenant_id
            AND other.sterilizer_id=NEW.sterilizer_id
            AND other.id<>NEW.id
-           AND other.status IN ('planned','running')
-           AND NEW.planned_start_at < other.planned_end_at
-           AND other.planned_start_at < NEW.planned_end_at
+           AND (
+               other.status='running'
+               OR (
+                   other.status='planned'
+                   AND NEW.planned_start_at < other.planned_end_at
+                   AND other.planned_start_at < NEW.planned_end_at
+               )
+           )
     ) THEN
         RAISE EXCEPTION 'Sterilizer already has an overlapping scheduled run'
             USING ERRCODE='23514';

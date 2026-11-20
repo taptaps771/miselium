@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from datetime import datetime, timedelta, timezone
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Sequence
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -299,7 +299,7 @@ def schedule_sterilization_cycle(
                 "Combined cycle allocation exceeds the sum of participating sterilizer capacities."
             )
 
-            session.execute(
+        session.execute(
             text(
                 """
                 INSERT INTO sterilization_cycles(
@@ -475,7 +475,7 @@ def start_sterilization_run(
         ).mappings().one()
         if run["status"] != "planned" or run["cycle_status"] not in {"planned", "running"}:
             raise SterilizationError("Only a planned run in an active cycle can be started.")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if run["planned_start_at"] > now:
             raise SterilizationError("A scheduled run cannot start before its planned start time.")
         if run["planned_end_at"] <= now:

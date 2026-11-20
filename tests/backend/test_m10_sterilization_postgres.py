@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -36,7 +36,7 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
     machine_a, machine_b = uuid4(), uuid4()
     admin_engine = create_engine(admin_url)
     runtime_engine = create_engine(runtime_url)
-    planned_start = datetime.now(timezone.utc) - timedelta(minutes=1)
+    planned_start = datetime.now(UTC) - timedelta(minutes=1)
 
     try:
         with admin_engine.begin() as connection:
@@ -47,8 +47,12 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
             connection.execute(
                 text(
                     """
-                    INSERT INTO tenants(id, code, name, status)
-                    VALUES (:id, :code, 'M10 sterilization', 'active')
+                        INSERT INTO tenants(
+                            id, code, name, status, approved_at, approval_reason
+                        ) VALUES (
+                            :id, :code, 'M10 sterilization', 'active', now(),
+                            'M10.1.5 integration fixture'
+                        )
                     """
                 ),
                 {"id": tenant_id, "code": f"m10-st-{tenant_id.hex[:12]}"},
@@ -240,18 +244,19 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
                 text(
                     """
                     SELECT c.status, c.cooling_completed_at, c.planned_capacity,
-                           count(DISTINCT r.id) AS run_count,
-                           sum(rb.allocated_quantity) AS allocated_quantity,
-                           count(DISTINCT e.id) AS event_count
+                                                     (SELECT count(*)
+                                                            FROM sterilization_runs r
+                                                         WHERE r.tenant_id=c.tenant_id AND r.cycle_id=c.id) AS run_count,
+                                                     (SELECT sum(rb.allocated_quantity)
+                                                            FROM sterilization_runs r
+                                                            JOIN sterilization_run_batches rb
+                                                                ON rb.tenant_id=r.tenant_id AND rb.sterilization_run_id=r.id
+                                                         WHERE r.tenant_id=c.tenant_id AND r.cycle_id=c.id) AS allocated_quantity,
+                                                     (SELECT count(*)
+                                                            FROM sterilization_cycle_events e
+                                                         WHERE e.tenant_id=c.tenant_id AND e.cycle_id=c.id) AS event_count
                       FROM sterilization_cycles c
-                      JOIN sterilization_runs r
-                        ON r.tenant_id=c.tenant_id AND r.cycle_id=c.id
-                      JOIN sterilization_run_batches rb
-                        ON rb.tenant_id=r.tenant_id AND rb.sterilization_run_id=r.id
-                      JOIN sterilization_cycle_events e
-                        ON e.tenant_id=c.tenant_id AND e.cycle_id=c.id
                      WHERE c.tenant_id=:tenant_id AND c.id=:cycle_id
-                     GROUP BY c.status, c.cooling_completed_at, c.planned_capacity
                     """
                 ),
                 {"tenant_id": str(tenant_id), "cycle_id": scheduled.cycle_id},

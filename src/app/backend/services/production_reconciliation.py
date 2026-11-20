@@ -162,9 +162,11 @@ def record_production_loss(
             raise ProductionReconciliationError(
                 "Kumbung loss requires the source production lot, variety segment and kumbung."
             )
-    elif production_lot_segment_id is not None or source_kumbung_id is not None:
+    elif source_kumbung_id is not None:
+        raise ProductionReconciliationError("Only a kumbung-stage loss may reference a source kumbung.")
+    if stage in {"mixing", "press_baglog"} and production_lot_segment_id is not None:
         raise ProductionReconciliationError(
-            "Only a kumbung-stage loss may reference a lot segment and source kumbung."
+            "Mixing and press rejection losses occur before variety-specific lot segmentation."
         )
     if stage == "mixing" and production_lot_id is not None:
         raise ProductionReconciliationError("Mixing loss must be recorded before a production lot exists.")

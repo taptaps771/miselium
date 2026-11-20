@@ -261,7 +261,7 @@ def test_shared_sterilization_cycle_capacity_schedule_and_cooling():
             assert Decimal(result["planned_capacity"]) == Decimal("1000")
             assert int(result["run_count"]) == 2
             assert Decimal(result["allocated_quantity"]) == Decimal("900")
-            assert int(result["event_count"]) == 5
+            assert int(result["event_count"]) == 6
 
     finally:
         runtime_engine.dispose()

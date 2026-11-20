@@ -7,9 +7,9 @@ is required.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4

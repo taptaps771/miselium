@@ -325,6 +325,27 @@ def place_lot_segment(
         {"lock_key": _lock_key},
     )
     ref = reference_id or uuid4()
+    existing = session.execute(
+        text(
+            """
+            SELECT id,quantity_delta,unit_id
+              FROM kumbung_placements
+             WHERE tenant_id=:tenant_id AND reference_id=:reference_id
+               AND movement_type='place' AND kumbung_id=:kumbung_id
+               AND production_lot_segment_id=:segment_id
+            """
+        ),
+        {
+            "tenant_id": str(tenant_id), "reference_id": str(ref),
+            "kumbung_id": str(kumbung_id), "segment_id": str(segment_id),
+        },
+    ).mappings().one_or_none()
+    if existing is not None:
+        if Decimal(existing["quantity_delta"]) != quantity or str(existing["unit_id"]) != str(unit_id):
+            raise ProductionPlacementError("Placement reference was already used with a different payload.")
+        return PlacementResult(
+            UUID(str(existing["id"])),segment_id,kumbung_id,quantity,unit_id,ref,True
+        )
     placement_id = uuid4()
     timestamp = occurred_at or datetime.now(UTC)
     if timestamp.tzinfo is None:
@@ -410,6 +431,38 @@ def move_lot_segment(
     timestamp = occurred_at or datetime.now(UTC)
     if timestamp.tzinfo is None:
         raise ProductionPlacementError("Move timestamp must include a timezone.")
+    prior = session.execute(
+        text(
+            """
+            SELECT movement_type,kumbung_id,quantity_delta,unit_id,id
+              FROM kumbung_placements
+             WHERE tenant_id=:tenant_id AND reference_id=:reference_id
+               AND production_lot_segment_id=:segment_id
+               AND movement_type IN ('move_out','move_in')
+             ORDER BY movement_type
+            """
+        ),
+        {"tenant_id": str(tenant_id), "reference_id": str(ref), "segment_id": str(segment_id)},
+    ).mappings().all()
+    if prior:
+        if len(prior) != 2:
+            raise ProductionPlacementError("A prior move reference is incomplete; manual reconciliation is required.")
+        by_type = {row["movement_type"]: row for row in prior}
+        out_row, in_row = by_type.get("move_out"), by_type.get("move_in")
+        if (
+            out_row is None or in_row is None
+            or str(out_row["kumbung_id"]) != str(source_kumbung_id)
+            or str(in_row["kumbung_id"]) != str(destination_kumbung_id)
+            or Decimal(out_row["quantity_delta"]) != -quantity
+            or Decimal(in_row["quantity_delta"]) != quantity
+            or str(out_row["unit_id"]) != str(unit_id)
+            or str(in_row["unit_id"]) != str(unit_id)
+        ):
+            raise ProductionPlacementError("Move reference was already used with a different payload.")
+        return (
+            PlacementResult(UUID(str(out_row["id"])),segment_id,source_kumbung_id,-quantity,unit_id,ref,True),
+            PlacementResult(UUID(str(in_row["id"])),segment_id,destination_kumbung_id,quantity,unit_id,ref,True),
+        )
     first_id, second_id = uuid4(), uuid4()
     try:
         for kumbung_id in sorted((source_kumbung_id, destination_kumbung_id), key=str):

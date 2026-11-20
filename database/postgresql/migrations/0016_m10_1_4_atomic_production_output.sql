@@ -52,6 +52,7 @@ DECLARE
     v_lot_quantity numeric(24,8);
     v_lot_unit_id uuid;
     v_batch_output_unit_id uuid;
+    v_ledger_matches boolean;
 BEGIN
     SELECT status, output_unit_id INTO v_batch_status, v_batch_output_unit_id
       FROM production_batches
@@ -98,6 +99,22 @@ BEGIN
     END IF;
     IF v_line_base_quantity IS NULL OR v_line_base_quantity <= 0 THEN
         RAISE EXCEPTION 'Production output line must have a positive base quantity'
+            USING ERRCODE='23514';
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1
+          FROM inventory_ledger_entries le
+         WHERE le.tenant_id=NEW.tenant_id
+           AND le.document_id=NEW.inventory_document_id
+           AND le.document_line_id=NEW.inventory_document_line_id
+           AND le.lot_id=v_line_lot_id
+           AND le.quantity_delta=v_line_base_quantity
+           AND le.value_delta=NEW.material_cost_snapshot
+           AND le.quantity_delta > 0
+    ) INTO v_ledger_matches;
+    IF NOT v_ledger_matches THEN
+        RAISE EXCEPTION 'Production output posting requires its matching positive inventory ledger entry'
             USING ERRCODE='23514';
     END IF;
     RETURN NEW;

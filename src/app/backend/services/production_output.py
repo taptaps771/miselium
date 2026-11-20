@@ -97,6 +97,11 @@ def post_production_output(
     """
     _set_context(session, actor_user_id, tenant_id)
     _require_modules(session, tenant_id)
+    # Share the batch lock with lifecycle transitions and sterilization allocation.
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"{tenant_id}:production-batch:{batch_id}"},
+    )
 
     try:
         batch = session.execute(

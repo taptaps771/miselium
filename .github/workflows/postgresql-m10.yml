@@ -40,16 +40,50 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
-      - name: Apply platform foundation (M9)
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0001_platform_foundation.sql
-      - name: Apply production and inventory (M10)
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
+      - name: Apply M9 platform foundation
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0001_platform_foundation.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0002_production_inventory.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0003_tenant_rbac_invitation_roles.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0004_authenticated_membership_discovery.sql
       - name: Prepare restricted runtime role
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          CREATE ROLE miselium_app NOLOGIN;
+          CREATE ROLE miselium_app LOGIN PASSWORD 'ci-miselium-runtime-password' NOSUPERUSER NOBYPASSRLS;
           GRANT USAGE ON SCHEMA public TO miselium_app;
-          GRANT SELECT, INSERT ON inventory_items TO miselium_app;
+          GRANT SELECT, INSERT ON locations, inventory_items TO miselium_app;
           SQL
-      - name: Run M10 smoke and invariant tests
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
+      - name: Apply M9 services, M11 settings, and M10.1 lifecycle migrations
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/roles/0001_miselium_app_auth_read.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0005_global_registration_tenant_lifecycle.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0006_tenant_invitation_lifecycle.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0007_tenant_membership_administration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0008_tenant_role_permission_administration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0009_invitation_location_lookup_qualification.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0010_invitation_role_permission_boundary.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0011_m10_inventory_application_services.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0012_modular_settings_and_machines.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0013_m10_1_2_production_stage_records.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0014_m10_1_2_1_press_output_integrity.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0015_m10_1_3_production_batch_transitions.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0016_m10_1_4_atomic_production_output.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0017_m10_1_5_sterilization_scheduling.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0018_m10_1_6_inoculation_allocations.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0019_m10_1_7_incubation_kumbung_lineage.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/migrations/0020_m10_1_8_loss_recovery_reconciliation.sql
+      - name: Run PostgreSQL schema and RLS smoke tests
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0001_platform_foundation_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0002_production_inventory_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0003_tenant_rbac_invitation_roles_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0004_authenticated_membership_discovery_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0012_modular_settings_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0013_m10_1_2_production_stage_records_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0014_m10_1_2_1_press_output_integrity_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0015_m10_1_3_production_batch_transitions_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0016_m10_1_4_atomic_production_output_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0017_m10_1_5_sterilization_scheduling_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0018_m10_1_6_inoculation_allocations_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0019_m10_1_7_incubation_kumbung_smoke.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/postgresql/tests/0020_m10_1_8_loss_recovery_reconciliation_smoke.sql

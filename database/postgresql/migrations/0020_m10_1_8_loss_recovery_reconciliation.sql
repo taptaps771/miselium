@@ -375,7 +375,7 @@ BEGIN
       JOIN production_lot_segments s
         ON s.tenant_id=p.tenant_id AND s.id=p.production_lot_segment_id
      WHERE p.tenant_id=NEW.tenant_id AND s.batch_id=NEW.batch_id;
-    SELECT COALESCE(sum(quantity),0),
+    SELECT COALESCE(sum(quantity) FILTER (WHERE stage <> 'mixing'),0),
            count(*) FILTER (WHERE disposition='pending'),
            count(*) FILTER (
                WHERE disposition IN ('recovered','recycled')

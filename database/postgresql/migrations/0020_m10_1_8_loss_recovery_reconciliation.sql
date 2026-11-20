@@ -91,8 +91,10 @@ CREATE OR REPLACE FUNCTION guard_production_loss_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m1018$
 DECLARE
     v_batch_output numeric(24,8);
+    v_batch_output_unit uuid;
     v_lot_batch uuid;
     v_lot_quantity numeric(24,8);
+    v_lot_unit uuid;
     v_existing numeric(24,8);
     v_press_rejects numeric(24,8);
     v_press_lot_batch uuid;
@@ -106,8 +108,8 @@ BEGIN
     PERFORM pg_advisory_xact_lock(
         hashtextextended(NEW.tenant_id::text || ':production-batch:' || NEW.batch_id::text,0)
     );
-    SELECT planned_output_quantity,location_id
-      INTO v_batch_output,v_batch_location
+    SELECT planned_output_quantity,location_id,output_unit_id
+      INTO v_batch_output,v_batch_location,v_batch_output_unit
       FROM production_batches
      WHERE tenant_id=NEW.tenant_id AND id=NEW.batch_id;
     IF v_batch_output IS NULL THEN
@@ -127,10 +129,10 @@ BEGIN
             RAISE EXCEPTION 'Press rejection loss exceeds immutable rejected press output'
                 USING ERRCODE='23514';
         END IF;
-        SELECT batch_id INTO v_press_lot_batch
+        SELECT batch_id,output_unit_id INTO v_press_lot_batch,v_lot_unit
           FROM production_lots
          WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_id;
-        IF v_press_lot_batch IS DISTINCT FROM NEW.batch_id THEN
+        IF v_press_lot_batch IS DISTINCT FROM NEW.batch_id OR v_lot_unit IS DISTINCT FROM NEW.unit_id THEN
             RAISE EXCEPTION 'Press rejection loss must reference the posted lot from the same batch'
                 USING ERRCODE='23514';
         END IF;
@@ -138,6 +140,10 @@ BEGIN
         SELECT COALESCE(sum(quantity),0) INTO v_existing
           FROM production_losses
          WHERE tenant_id=NEW.tenant_id AND batch_id=NEW.batch_id AND stage='mixing';
+        IF NEW.unit_id IS DISTINCT FROM v_batch_output_unit THEN
+            RAISE EXCEPTION 'Mixing loss unit must match the batch output unit'
+                USING ERRCODE='23514';
+        END IF;
         IF v_existing + NEW.quantity > v_batch_output THEN
             RAISE EXCEPTION 'Mixing loss exceeds the batch planned output quantity'
                 USING ERRCODE='23514';
@@ -185,11 +191,12 @@ BEGIN
                 USING ERRCODE='23514';
         END IF;
     ELSIF NEW.stage IN ('sterilization','cooling','inoculation','incubation','other') THEN
-        SELECT batch_id,output_quantity INTO v_lot_batch,v_lot_quantity
+        SELECT batch_id,output_quantity,output_unit_id
+          INTO v_lot_batch,v_lot_quantity,v_lot_unit
           FROM production_lots
          WHERE tenant_id=NEW.tenant_id AND id=NEW.production_lot_id;
-        IF v_lot_batch IS DISTINCT FROM NEW.batch_id THEN
-            RAISE EXCEPTION 'Loss must reference a production lot from the same batch'
+        IF v_lot_batch IS DISTINCT FROM NEW.batch_id OR v_lot_unit IS DISTINCT FROM NEW.unit_id THEN
+            RAISE EXCEPTION 'Loss must reference a production lot from the same batch and unit'
                 USING ERRCODE='23514';
         END IF;
         SELECT COALESCE(sum(quantity),0) INTO v_existing

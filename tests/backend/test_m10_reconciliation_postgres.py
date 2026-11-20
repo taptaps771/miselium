@@ -393,28 +393,6 @@ def test_production_loss_idempotency_and_immutable_event_history():
             assert Decimal(recovery_ledger["quantity_delta"]) == Decimal("5")
             assert Decimal(recovery_ledger["value_delta"]) == Decimal("12")
             assert recovery_ledger["disposition"] == "recovered"
-            recycled_ledger = session.execute(
-                text(
-                    """
-                    SELECT le.quantity_delta,le.value_delta,rr.disposition,
-                           r.loss_quantity_snapshot,r.recovered_quantity,r.recovery_mode
-                      FROM production_recovery_lots r
-                      JOIN inventory_ledger_entries le
-                        ON le.tenant_id=r.tenant_id AND le.document_id=r.inventory_document_id
-                      JOIN production_losses rr
-                        ON rr.tenant_id=r.tenant_id AND rr.id=r.loss_id
-                     WHERE r.tenant_id=:tenant_id AND r.loss_id=:loss_id
-                    """
-                ),
-                {"tenant_id": str(tenant_id), "loss_id": str(recycled_loss.loss_id)},
-            ).mappings().one()
-            assert Decimal(recycled_ledger["quantity_delta"]) == Decimal("1.5")
-            assert Decimal(recycled_ledger["value_delta"]) == Decimal("7")
-            assert Decimal(recycled_ledger["loss_quantity_snapshot"]) == Decimal("5")
-            assert Decimal(recycled_ledger["recovered_quantity"]) == Decimal("1.5")
-            assert recycled_ledger["recovery_mode"] == "recycle_to_mixing"
-            assert recycled_ledger["disposition"] == "recycled"
-
             recycled_loss = record_production_loss(
                 session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,
                 stage="inoculation", idempotency_key=f"recycled-loss-{batch_id.hex}",
@@ -438,6 +416,28 @@ def test_production_loss_idempotency_and_immutable_event_history():
             assert recycled.total_cost == Decimal("7")
             assert recycled.disposition == "recycled"
             session.commit()
+            
+            recycled_ledger = session.execute(
+                text(
+                    """
+                    SELECT le.quantity_delta,le.value_delta,rr.disposition,
+                           r.loss_quantity_snapshot,r.recovered_quantity,r.recovery_mode
+                      FROM production_recovery_lots r
+                      JOIN inventory_ledger_entries le
+                        ON le.tenant_id=r.tenant_id AND le.document_id=r.inventory_document_id
+                      JOIN production_losses rr
+                        ON rr.tenant_id=r.tenant_id AND rr.id=r.loss_id
+                     WHERE r.tenant_id=:tenant_id AND r.loss_id=:loss_id
+                    """
+                ),
+                {"tenant_id": str(tenant_id), "loss_id": str(recycled_loss.loss_id)},
+            ).mappings().one()
+            assert Decimal(recycled_ledger["quantity_delta"]) == Decimal("1.5")
+            assert Decimal(recycled_ledger["value_delta"]) == Decimal("7")
+            assert Decimal(recycled_ledger["loss_quantity_snapshot"]) == Decimal("5")
+            assert Decimal(recycled_ledger["recovered_quantity"]) == Decimal("1.5")
+            assert recycled_ledger["recovery_mode"] == "recycle_to_mixing"
+            assert recycled_ledger["disposition"] == "recycled"
 
             terminal_loss = record_production_loss(
                 session, actor_user_id=actor_id, tenant_id=tenant_id, batch_id=batch_id,

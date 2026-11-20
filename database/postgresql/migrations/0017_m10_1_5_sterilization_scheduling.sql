@@ -173,7 +173,10 @@ RETURNS trigger LANGUAGE plpgsql AS $m1015$
 DECLARE
     v_batch_output numeric(24,8);
     v_batch_unit uuid;
-    v_run_unit uuid;
+    v_batch_production_unit uuid;
+    v_batch_status varchar(30);
+    v_run_production_unit uuid;
+    v_run_status varchar(20);
     v_cycle_unit uuid;
     v_conversion numeric(24,12);
     v_expected numeric(24,8);
@@ -192,19 +195,31 @@ BEGIN
             0
         )
     );
-    SELECT actual_output_quantity, output_unit_id
-      INTO v_batch_output, v_batch_unit
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.tenant_id::text || ':production-batch:' || NEW.batch_id::text, 0)
+    );
+    SELECT actual_output_quantity, output_unit_id, production_unit_id, status
+      INTO v_batch_output, v_batch_unit, v_batch_production_unit, v_batch_status
       FROM production_batches
      WHERE tenant_id=NEW.tenant_id AND id=NEW.batch_id;
-    SELECT sr.capacity_to_cycle_unit_snapshot, sr.sterilizer_id,
-           sc.capacity_unit_id
-      INTO v_machine_factor, v_run_unit, v_cycle_unit
+    SELECT sr.capacity_to_cycle_unit_snapshot, sc.capacity_unit_id,
+           sc.production_unit_id, sr.status
+      INTO v_machine_factor, v_cycle_unit, v_run_production_unit, v_run_status
       FROM sterilization_runs sr
       JOIN sterilization_cycles sc
         ON sc.tenant_id=sr.tenant_id AND sc.id=sr.cycle_id
      WHERE sr.tenant_id=NEW.tenant_id AND sr.id=NEW.sterilization_run_id;
-    IF v_batch_output IS NULL OR v_batch_output <= 0 OR v_batch_unit IS NULL THEN
-        RAISE EXCEPTION 'Sterilization allocation requires a batch with posted good output'
+    IF v_batch_output IS NULL OR v_batch_output <= 0 OR v_batch_unit IS NULL
+       OR v_batch_status <> 'sterilization' THEN
+        RAISE EXCEPTION 'Sterilization allocation requires a batch in sterilization stage with posted good output'
+            USING ERRCODE='23514';
+    END IF;
+    IF v_batch_production_unit IS DISTINCT FROM v_run_production_unit THEN
+        RAISE EXCEPTION 'Batch and sterilization cycle must belong to the same production unit'
+            USING ERRCODE='23514';
+    END IF;
+    IF v_run_status <> 'planned' THEN
+        RAISE EXCEPTION 'Batch allocations are only accepted while a sterilization run is planned'
             USING ERRCODE='23514';
     END IF;
     IF NEW.quantity_unit_id <> v_batch_unit THEN
@@ -314,6 +329,51 @@ CREATE TRIGGER sterilization_run_schedule_overlap_guard
     BEFORE INSERT OR UPDATE OF planned_start_at,planned_end_at,status,sterilizer_id
     ON sterilization_runs
     FOR EACH ROW EXECUTE FUNCTION guard_sterilization_run_schedule_overlap();
+
+
+CREATE OR REPLACE FUNCTION guard_sterilization_cycle_capacity_update()
+RETURNS trigger LANGUAGE plpgsql AS $m1015$
+BEGIN
+    IF (NEW.capacity_unit_id,NEW.planned_capacity,NEW.production_unit_id,NEW.planned_start_at)
+       IS DISTINCT FROM
+       (OLD.capacity_unit_id,OLD.planned_capacity,OLD.production_unit_id,OLD.planned_start_at)
+       AND EXISTS (
+           SELECT 1 FROM sterilization_runs
+            WHERE tenant_id=OLD.tenant_id AND cycle_id=OLD.id
+       ) THEN
+        RAISE EXCEPTION 'Sterilization cycle capacity and schedule are immutable after runs are created'
+            USING ERRCODE='55000';
+    END IF;
+    RETURN NEW;
+END;
+$m1015$;
+CREATE TRIGGER sterilization_cycle_capacity_immutable
+    BEFORE UPDATE OF capacity_unit_id,planned_capacity,production_unit_id,planned_start_at
+    ON sterilization_cycles
+    FOR EACH ROW EXECUTE FUNCTION guard_sterilization_cycle_capacity_update();
+
+CREATE OR REPLACE FUNCTION guard_sterilization_run_configuration_update()
+RETURNS trigger LANGUAGE plpgsql AS $m1015$
+BEGIN
+    IF (NEW.sterilizer_id,NEW.cycle_id,NEW.planned_start_at,NEW.planned_end_at,
+        NEW.cycle_minutes_snapshot,NEW.cooling_minutes_snapshot,
+        NEW.capacity_to_cycle_unit_snapshot)
+       IS DISTINCT FROM
+       (OLD.sterilizer_id,OLD.cycle_id,OLD.planned_start_at,OLD.planned_end_at,
+        OLD.cycle_minutes_snapshot,OLD.cooling_minutes_snapshot,
+        OLD.capacity_to_cycle_unit_snapshot) THEN
+        RAISE EXCEPTION 'Sterilization run configuration snapshots are immutable; cancel and reschedule before execution'
+            USING ERRCODE='55000';
+    END IF;
+    RETURN NEW;
+END;
+$m1015$;
+CREATE TRIGGER sterilization_run_configuration_immutable
+    BEFORE UPDATE OF sterilizer_id,cycle_id,planned_start_at,planned_end_at,
+                     cycle_minutes_snapshot,cooling_minutes_snapshot,
+                     capacity_to_cycle_unit_snapshot
+    ON sterilization_runs
+    FOR EACH ROW EXECUTE FUNCTION guard_sterilization_run_configuration_update();
 
 CREATE OR REPLACE FUNCTION reject_sterilization_configuration_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $m1015$

@@ -121,6 +121,7 @@ def record_production_loss(
     tenant_id: UUID,
     batch_id: UUID,
     stage: str,
+    idempotency_key: str,
     reason_code: str,
     quantity: Decimal,
     unit_id: UUID,
@@ -165,12 +166,48 @@ def record_production_loss(
     timestamp = occurred_at or datetime.now(UTC)
     if timestamp.tzinfo is None:
         raise ProductionReconciliationError("Loss occurrence time must include a timezone.")
+    key = idempotency_key.strip()
+    if not key or len(key) > 120:
+        raise ProductionReconciliationError("A non-empty loss idempotency key of at most 120 characters is required.")
+
+    request_payload = {
+        "stage": stage, "reason_code": reason_code.strip(), "quantity": str(quantity),
+        "unit_id": str(unit_id), "recoverable": recoverable, "disposition": disposition,
+        "production_lot_id": str(production_lot_id) if production_lot_id else None,
+        "production_lot_segment_id": str(production_lot_segment_id) if production_lot_segment_id else None,
+        "source_kumbung_id": str(source_kumbung_id) if source_kumbung_id else None,
+        "notes": notes.strip() if notes and notes.strip() else None,
+    }
+    request_hash = hashlib.sha256(
+        json.dumps(request_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
     _set_context(session, actor_user_id, tenant_id)
     _require_production_module(session, tenant_id)
     _lock_batch(session, tenant_id, batch_id)
-    loss_id = uuid4()
     try:
+        existing = session.execute(
+            text(
+                """
+                SELECT id,disposition,request_hash
+                  FROM production_losses
+                 WHERE tenant_id=:tenant_id AND batch_id=:batch_id
+                   AND idempotency_key=:idempotency_key
+                """
+            ),
+            {"tenant_id": str(tenant_id), "batch_id": str(batch_id), "idempotency_key": key},
+        ).mappings().one_or_none()
+        if existing is not None:
+            if existing["request_hash"] != request_hash:
+                raise ProductionReconciliationError(
+                    "The loss idempotency key was already used with a different payload."
+                )
+            return ProductionLossResult(
+                UUID(str(existing["id"])), batch_id, stage, quantity, unit_id,
+                str(existing["disposition"]),
+            )
+
+        loss_id = uuid4()
         session.execute(
             text(
                 """
@@ -178,12 +215,14 @@ def record_production_loss(
                     id,tenant_id,batch_id,production_lot_id,
                     production_lot_segment_id,source_kumbung_id,
                     stage,reason_code,quantity,unit_id,recoverable,
-                    disposition,occurred_at,recorded_by,notes
+                    disposition,idempotency_key,request_hash,
+                    occurred_at,recorded_by,notes
                 ) VALUES (
                     :id,:tenant_id,:batch_id,:lot_id,
                     :segment_id,:kumbung_id,
                     :stage,:reason_code,:quantity,:unit_id,:recoverable,
-                    'pending',:occurred_at,:actor_user_id,:notes
+                    'pending',:idempotency_key,:request_hash,
+                    :occurred_at,:actor_user_id,:notes
                 )
                 """
             ),
@@ -194,6 +233,7 @@ def record_production_loss(
                 "kumbung_id": str(source_kumbung_id) if source_kumbung_id else None,
                 "stage": stage, "reason_code": reason_code.strip(), "quantity": quantity,
                 "unit_id": str(unit_id), "recoverable": recoverable,
+                "idempotency_key": key, "request_hash": request_hash,
                 "occurred_at": timestamp, "actor_user_id": str(actor_user_id),
                 "notes": notes.strip() if notes and notes.strip() else None,
             },
@@ -206,10 +246,7 @@ def record_production_loss(
                      WHERE tenant_id=:tenant_id AND id=:loss_id
                     """
                 ),
-                {
-                    "disposition": disposition, "tenant_id": str(tenant_id),
-                    "loss_id": str(loss_id),
-                },
+                {"disposition": disposition, "tenant_id": str(tenant_id), "loss_id": str(loss_id)},
             )
         session.execute(
             text(
@@ -223,7 +260,8 @@ def record_production_loss(
                                        'unit_id',CAST(:unit_id AS uuid),
                                        'disposition',:disposition),
                     jsonb_build_object('batch_id',CAST(:batch_id AS uuid),
-                                       'recoverable',CAST(:recoverable AS boolean))
+                                       'recoverable',CAST(:recoverable AS boolean),
+                                       'idempotency_key',:idempotency_key)
                 )
                 """
             ),
@@ -232,12 +270,12 @@ def record_production_loss(
                 "loss_id": str(loss_id), "stage": stage, "quantity": quantity,
                 "unit_id": str(unit_id), "disposition": disposition,
                 "batch_id": str(batch_id), "recoverable": recoverable,
+                "idempotency_key": key,
             },
         )
     except DBAPIError as exc:
         _translate_db_error(exc)
-    return ProductionLossResult(loss_id,batch_id,stage,quantity,unit_id,disposition)
-
+    return ProductionLossResult(loss_id, batch_id, stage, quantity, unit_id, disposition)
 
 def recover_production_loss(
     session: Session,

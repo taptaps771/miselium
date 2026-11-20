@@ -61,6 +61,9 @@ ALTER TABLE kumbung_placements
 CREATE INDEX ix_kumbung_placements_segment
     ON kumbung_placements(tenant_id,production_lot_segment_id,occurred_at)
     WHERE production_lot_segment_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_kumbung_placement_reference
+    ON kumbung_placements(tenant_id,reference_id,movement_type,kumbung_id,production_lot_segment_id)
+    WHERE reference_id IS NOT NULL AND production_lot_segment_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION guard_production_lot_segment_insert()
 RETURNS trigger LANGUAGE plpgsql AS $m1017$
@@ -126,6 +129,7 @@ DECLARE
     v_batch_status varchar(30);
     v_conversion numeric(24,12);
     v_segment_balance numeric(24,8);
+    v_source_occupancy numeric(24,8);
     v_occupied numeric(24,8);
     v_unconvertible bigint;
 BEGIN
@@ -160,13 +164,13 @@ BEGIN
         RAISE EXCEPTION 'Placement unit must match the lot segment and kumbung capacity unit must be configured'
             USING ERRCODE='23514';
     END IF;
-    IF NEW.movement_type IN ('place','move_in') AND NEW.quantity_delta <= 0
-       OR NEW.movement_type IN ('move_out','harvest_remove','loss_remove') AND NEW.quantity_delta >= 0 THEN
+    IF (NEW.movement_type IN ('place','move_in') AND NEW.quantity_delta <= 0)
+       OR (NEW.movement_type='move_out' AND NEW.quantity_delta >= 0) THEN
         RAISE EXCEPTION 'Placement movement direction does not match its movement type'
             USING ERRCODE='23514';
     END IF;
-    IF NEW.movement_type='correction' THEN
-        RAISE EXCEPTION 'Corrections require a dedicated approved reconciliation command'
+    IF NEW.movement_type IN ('harvest_remove','loss_remove','correction') THEN
+        RAISE EXCEPTION 'Removal and correction movements require the M10.1.8 reconciliation command'
             USING ERRCODE='23514';
     END IF;
     SELECT factor INTO v_conversion
@@ -178,12 +182,23 @@ BEGIN
         RAISE EXCEPTION 'No explicit conversion exists between lot and kumbung capacity units'
             USING ERRCODE='23514';
     END IF;
-    SELECT v_segment_quantity + COALESCE(sum(quantity_delta),0)
+    SELECT COALESCE(sum(quantity_delta),0)
       INTO v_segment_balance
       FROM kumbung_placements
      WHERE tenant_id=NEW.tenant_id AND production_lot_segment_id=NEW.production_lot_segment_id;
-    IF v_segment_balance + NEW.quantity_delta < 0 THEN
-        RAISE EXCEPTION 'Placement would overdraw the available variety lot segment'
+    IF NEW.movement_type='move_out' THEN
+        SELECT COALESCE(sum(quantity_delta),0)
+          INTO v_source_occupancy
+          FROM kumbung_placements
+         WHERE tenant_id=NEW.tenant_id
+           AND production_lot_segment_id=NEW.production_lot_segment_id
+           AND kumbung_id=NEW.kumbung_id;
+        IF v_source_occupancy + NEW.quantity_delta < 0 THEN
+            RAISE EXCEPTION 'Move-out exceeds the quantity present in the source kumbung'
+                USING ERRCODE='23514';
+        END IF;
+    ELSIF v_segment_balance + NEW.quantity_delta > v_segment_quantity THEN
+        RAISE EXCEPTION 'Placement exceeds the unplaced variety lot segment quantity'
             USING ERRCODE='23514';
     END IF;
     SELECT count(*) INTO v_unconvertible

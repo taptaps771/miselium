@@ -433,3 +433,157 @@ GRANT INSERT ON inventory_lots,inventory_documents,inventory_document_lines,
     inventory_ledger_entries,tenant_audit_events TO miselium_app;
 
 COMMIT;
+
+
+-- Keep placement capacity and available-segment checks consistent with loss records.
+CREATE OR REPLACE FUNCTION guard_kumbung_placement_insert()
+RETURNS trigger LANGUAGE plpgsql AS $m1017$
+DECLARE
+    v_segment_batch uuid;
+    v_segment_lot uuid;
+    v_segment_unit uuid;
+    v_segment_quantity numeric(24,8);
+    v_kumbung_location uuid;
+    v_kumbung_capacity numeric(18,3);
+    v_kumbung_capacity_unit uuid;
+    v_kumbung_active boolean;
+    v_batch_location uuid;
+    v_batch_status varchar(30);
+    v_conversion numeric(24,12);
+    v_segment_balance numeric(24,8);
+    v_source_occupancy numeric(24,8);
+    v_occupied numeric(24,8);
+    v_unconvertible bigint;
+BEGIN
+    IF NEW.production_lot_segment_id IS NULL THEN
+        RAISE EXCEPTION 'New kumbung placements must reference a variety-specific production lot segment'
+            USING ERRCODE='23514';
+    END IF;
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.tenant_id::text || ':kumbung:' || NEW.kumbung_id::text,0)
+    );
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.tenant_id::text || ':lot-segment:' || NEW.production_lot_segment_id::text,0)
+    );
+    SELECT s.batch_id,s.production_lot_id,s.unit_id,s.quantity,b.location_id,b.status
+      INTO v_segment_batch,v_segment_lot,v_segment_unit,v_segment_quantity,v_batch_location,v_batch_status
+      FROM production_lot_segments s
+      JOIN production_batches b
+        ON b.tenant_id=s.tenant_id AND b.id=s.batch_id
+     WHERE s.tenant_id=NEW.tenant_id AND s.id=NEW.production_lot_segment_id;
+    SELECT location_id,capacity,capacity_unit_id,is_active
+      INTO v_kumbung_location,v_kumbung_capacity,v_kumbung_capacity_unit,v_kumbung_active
+      FROM kumbungs
+     WHERE tenant_id=NEW.tenant_id AND id=NEW.kumbung_id;
+    IF v_segment_batch IS NULL OR v_kumbung_location IS NULL
+       OR v_kumbung_active IS DISTINCT FROM true
+       OR v_batch_location <> v_kumbung_location
+       OR v_batch_status <> 'ready' THEN
+        RAISE EXCEPTION 'Placement requires a ready batch and an active kumbung at its location'
+            USING ERRCODE='23514';
+    END IF;
+    IF NEW.unit_id <> v_segment_unit OR v_kumbung_capacity_unit IS NULL THEN
+        RAISE EXCEPTION 'Placement unit must match the lot segment and kumbung capacity unit must be configured'
+            USING ERRCODE='23514';
+    END IF;
+    IF (NEW.movement_type IN ('place','move_in') AND NEW.quantity_delta <= 0)
+       OR (NEW.movement_type='move_out' AND NEW.quantity_delta >= 0) THEN
+        RAISE EXCEPTION 'Placement movement direction does not match its movement type'
+            USING ERRCODE='23514';
+    END IF;
+    IF NEW.movement_type IN ('harvest_remove','loss_remove','correction') THEN
+        RAISE EXCEPTION 'Removal and correction movements require the M10.1.8 reconciliation command'
+            USING ERRCODE='23514';
+    END IF;
+    SELECT factor INTO v_conversion
+      FROM measurement_unit_conversions
+     WHERE from_unit_id=v_segment_unit AND to_unit_id=v_kumbung_capacity_unit;
+    IF v_segment_unit = v_kumbung_capacity_unit THEN
+        v_conversion := 1;
+    ELSIF v_conversion IS NULL THEN
+        RAISE EXCEPTION 'No explicit conversion exists between lot and kumbung capacity units'
+            USING ERRCODE='23514';
+    END IF;
+    SELECT COALESCE(sum(p.quantity_delta),0) + COALESCE((
+               SELECT sum(l.quantity) FROM production_losses l
+                WHERE l.tenant_id=NEW.tenant_id
+                  AND l.production_lot_segment_id=NEW.production_lot_segment_id
+                  AND l.disposition IN ('recovered','recycled','permanent_loss','discarded')
+           ),0)
+      INTO v_segment_balance
+      FROM kumbung_placements p
+     WHERE p.tenant_id=NEW.tenant_id AND p.production_lot_segment_id=NEW.production_lot_segment_id;
+    IF NEW.movement_type='move_out' THEN
+        SELECT COALESCE(sum(p.quantity_delta),0) - COALESCE((
+                   SELECT sum(l.quantity) FROM production_losses l
+                    WHERE l.tenant_id=NEW.tenant_id
+                      AND l.production_lot_segment_id=NEW.production_lot_segment_id
+                      AND l.source_kumbung_id=NEW.kumbung_id
+                      AND l.disposition IN ('recovered','recycled','permanent_loss','discarded')
+               ),0)
+          INTO v_source_occupancy
+          FROM kumbung_placements p
+         WHERE p.tenant_id=NEW.tenant_id
+           AND p.production_lot_segment_id=NEW.production_lot_segment_id
+           AND p.kumbung_id=NEW.kumbung_id;
+        IF v_source_occupancy + NEW.quantity_delta < 0 THEN
+            RAISE EXCEPTION 'Move-out exceeds the quantity present in the source kumbung'
+                USING ERRCODE='23514';
+        END IF;
+    ELSIF v_segment_balance + NEW.quantity_delta > v_segment_quantity THEN
+        RAISE EXCEPTION 'Placement exceeds the unplaced variety lot segment quantity'
+            USING ERRCODE='23514';
+    END IF;
+    SELECT count(*) INTO v_unconvertible
+      FROM kumbung_placements p
+     WHERE p.tenant_id=NEW.tenant_id AND p.kumbung_id=NEW.kumbung_id
+       AND p.unit_id <> v_kumbung_capacity_unit
+       AND NOT EXISTS (
+           SELECT 1 FROM measurement_unit_conversions c
+            WHERE c.from_unit_id=p.unit_id AND c.to_unit_id=v_kumbung_capacity_unit
+       );
+    IF v_unconvertible > 0 THEN
+        RAISE EXCEPTION 'Existing kumbung occupancy contains a unit without an explicit capacity conversion'
+            USING ERRCODE='23514';
+    END IF;
+    SELECT count(*) INTO v_unconvertible
+      FROM production_losses l
+     WHERE l.tenant_id=NEW.tenant_id AND l.source_kumbung_id=NEW.kumbung_id
+       AND l.stage='kumbung' AND l.unit_id <> v_kumbung_capacity_unit
+       AND NOT EXISTS (
+           SELECT 1 FROM measurement_unit_conversions c
+            WHERE c.from_unit_id=l.unit_id AND c.to_unit_id=v_kumbung_capacity_unit
+       );
+    IF v_unconvertible > 0 THEN
+        RAISE EXCEPTION 'Existing kumbung losses contain a unit without an explicit capacity conversion'
+            USING ERRCODE='23514';
+    END IF;
+    SELECT COALESCE(sum(
+               p.quantity_delta * CASE WHEN p.unit_id=v_kumbung_capacity_unit
+                                       THEN 1 ELSE c.factor END
+           ),0) - COALESCE((
+               SELECT sum(l.quantity * CASE WHEN l.unit_id=v_kumbung_capacity_unit
+                                            THEN 1 ELSE lc.factor END)
+                 FROM production_losses l
+                 LEFT JOIN measurement_unit_conversions lc
+                   ON lc.from_unit_id=l.unit_id AND lc.to_unit_id=v_kumbung_capacity_unit
+                WHERE l.tenant_id=NEW.tenant_id AND l.source_kumbung_id=NEW.kumbung_id
+                  AND l.stage='kumbung'
+                  AND l.disposition IN ('recovered','recycled','permanent_loss','discarded')
+           ),0)
+      INTO v_occupied
+      FROM kumbung_placements p
+      LEFT JOIN measurement_unit_conversions c
+        ON c.from_unit_id=p.unit_id AND c.to_unit_id=v_kumbung_capacity_unit
+     WHERE p.tenant_id=NEW.tenant_id AND p.kumbung_id=NEW.kumbung_id;
+    IF v_occupied + (NEW.quantity_delta * v_conversion) > v_kumbung_capacity THEN
+        RAISE EXCEPTION 'Placement exceeds remaining kumbung capacity'
+            USING ERRCODE='23514';
+    END IF;
+    IF v_occupied + (NEW.quantity_delta * v_conversion) < 0 THEN
+        RAISE EXCEPTION 'Placement movement would make kumbung occupancy negative'
+            USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END;
+$m1017$;

@@ -492,7 +492,62 @@ def recover_production_loss(
         if locked_loss["recoverable"] is not True or locked_loss["disposition"] != "pending":
             raise ProductionReconciliationError("Only a pending loss marked recoverable can be recovered.")
 
+        source_output = Decimal(session.execute(
+            text(
+                """
+                SELECT COALESCE(sum(output_quantity),0)
+                  FROM production_lots
+                 WHERE tenant_id=:tenant_id AND batch_id=:batch_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "batch_id": str(loss["batch_id"])},
+        ).scalar_one())
+        source_material = session.execute(
+            text(
+                """
+                SELECT count(*) AS line_count,
+                       COALESCE(sum(material_cost_snapshot),0) AS amount,
+                       count(DISTINCT currency) AS currencies,
+                       min(currency) AS currency
+                  FROM production_batch_consumptions
+                 WHERE tenant_id=:tenant_id AND batch_id=:batch_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "batch_id": str(loss["batch_id"])},
+        ).mappings().one()
+        source_overhead = session.execute(
+            text(
+                """
+                SELECT COALESCE(sum(total_cost),0) AS amount,
+                       count(DISTINCT currency) AS currencies,
+                       min(currency) AS currency
+                  FROM production_machine_cost_allocations
+                 WHERE tenant_id=:tenant_id AND batch_id=:batch_id
+                """
+            ),
+            {"tenant_id": str(tenant_id), "batch_id": str(loss["batch_id"])},
+        ).mappings().one()
+        source_currency = str(loss["default_currency"]).strip()
+        if (
+            source_output <= 0 or int(source_material["line_count"]) == 0
+            or int(source_material["currencies"]) != 1
+            or str(source_material["currency"]).strip() != source_currency
+            or int(source_overhead["currencies"]) > 1
+            or (
+                int(source_overhead["currencies"]) == 1
+                and str(source_overhead["currency"]).strip() != source_currency
+            )
+        ):
+            raise ProductionReconciliationError(
+                "Recovery valuation requires posted source-batch costs in the tenant base currency."
+            )
+        source_gross_cost = Decimal(source_material["amount"]) + Decimal(source_overhead["amount"])
         loss_quantity = Decimal(loss["quantity"])
+        max_salvage_value = source_gross_cost * loss_quantity / source_output
+        if material_value_snapshot > max_salvage_value:
+            raise ProductionReconciliationError(
+                "Salvage value cannot exceed the source loss share of historical batch cost."
+            )
         loss_unit_id = UUID(str(loss["unit_id"]))
         if str(loss_unit_id) != str(loss["output_unit_id"]):
             raise ProductionReconciliationError("Loss quantity unit must match its source production lot.")
